@@ -1,0 +1,492 @@
+instructions.txt
+
+Surface – Anonymous Feedback & Insights Tool (MVP Specification)
+
+Overview
+Surface was a web-based SaaS tool that helped small companies collect honest, mostly anonymous feedback from employees and turn it into clear, aggregated themes and actions for managers. The product focused on enabling “venting” and structured peer/manager feedback while protecting anonymity and giving managers a simple dashboard view of team health.
+
+The system used:
+
+Frontend: React + TypeScript
+
+Backend: FastAPI (Python) exposing a REST API
+
+Database: PostgreSQL
+
+It was designed initially for a single-team pilot in a 20–100 person company, with a clear path to multi-team and full-organization support later.
+
+Core goals
+
+Make it easy and safe for employees to share honest feedback (rants + structured feedback).
+
+Aggregate feedback into anonymized themes and simple metrics.
+
+Give managers a clear, actionable dashboard (themes + example comments + actions).
+
+Enforce anonymity via thresholds and de-identification so employees feel protected.
+
+User roles
+
+Employee
+
+Logged in to submit anonymous “rants” and structured feedback about their manager and peers.
+
+Could see high-level team themes and the manager’s stated actions for each cycle.
+
+Never saw who said what, or any identifiable details about other employees.
+
+Manager
+
+Managed one team in the MVP.
+
+Saw aggregated feedback about their team and themselves:
+
+Top themes per feedback cycle.
+
+Example anonymized comments (only when thresholds were met).
+
+Average scores from structured feedback.
+
+Logged “actions taken” per theme to close the feedback loop.
+
+Admin (HR or founder)
+
+Set up the organization and pilot team:
+
+Imported users, teams, and manager mappings via CSV.
+
+Configured basic settings like anonymity thresholds and feedback cadence (for MVP this could be hard-coded).
+
+Viewed high-level metrics for the pilot team only (no identities).
+
+High-level flows
+
+Admin setup flow
+
+Admin created an organization and one pilot team.
+
+Admin uploaded a CSV with:
+
+Employee ID
+
+Name
+
+Work email
+
+Team
+
+Manager ID (or a flag indicating this user is a manager)
+
+The system stored these in PostgreSQL (users, teams).
+
+Admin (or system default) set:
+
+The pilot team to activate.
+
+The anonymity threshold (e.g., minimum 5 unique respondents).
+
+A feedback cadence (e.g., every 2 weeks) for the pilot.
+
+Feedback cycle flow (conceptual)
+A “feedback cycle” was a time-bounded window (e.g., 2 weeks) during which employees could submit feedback. After the window closed, the system aggregated and presented insights.
+
+Each cycle contained:
+
+Anonymous rants (open text, optional tags).
+
+Structured feedback about specific people (manager + limited peers).
+
+At a high level:
+
+Cycle opened → employees were invited to submit feedback.
+
+Employees submitted rants and structured feedback.
+
+Cycle closed → backend aggregated & anonymized data (with AI).
+
+Manager reviewed dashboard, added actions.
+
+Team saw a summary and actions.
+
+Database entities (simplified)
+These were the key tables planned in PostgreSQL:
+
+users
+
+id
+
+name
+
+email
+
+role (employee, manager, admin)
+
+team_id
+
+manager_id (nullable; points to another user)
+
+teams
+
+id
+
+name
+
+feedback_cycles
+
+id
+
+team_id
+
+start_date
+
+end_date
+
+status (open, closed, aggregated)
+
+rants
+
+id
+
+user_id (who submitted; internal only, never exposed to managers in UI)
+
+cycle_id
+
+raw_text (short-lived)
+
+anonymized_text
+
+theme (string or enum)
+
+sentiment (e.g., negative/neutral/positive)
+
+created_at
+
+structured_feedback
+
+id
+
+giver_id
+
+receiver_id
+
+cycle_id
+
+scores (e.g., JSON or separate columns for dimensions like support, communication)
+
+comments_helpful (optional text)
+
+comments_improvement (optional text)
+
+created_at
+
+cycle_insights
+
+id
+
+cycle_id
+
+theme
+
+sentiment_summary
+
+count (number of references)
+
+example_comments (e.g., JSON array of anonymized snippets)
+
+actions
+
+id
+
+cycle_id
+
+theme
+
+manager_id
+
+action_text
+
+created_at
+
+Core backend behavior (FastAPI)
+
+Auth & user management
+
+Implemented basic authentication (e.g., email + password with JWT).
+
+Routes (examples):
+
+POST /auth/register (for seeding or admin use in MVP)
+
+POST /auth/login
+
+GET /auth/me (returns current user)
+
+Admin setup routes
+
+POST /admin/users/import
+
+Accepts uploaded CSV (or JSON for MVP) with user data.
+
+Creates users and teams in the database.
+
+POST /admin/teams/{team_id}/cycles
+
+Creates a new feedback cycle for a given team.
+
+Employee feedback routes
+
+POST /feedback/rant
+
+Input: text + optional topic tags.
+
+Backend:
+
+Validated request (user authenticated, cycle open).
+
+Called AI service to de-identify text and infer theme/sentiment.
+
+Stored a rant record linked to user and cycle.
+
+Raw text could be stored temporarily (if needed) but was intended to be short-lived; anonymized_text/theme/sentiment were the primary fields kept.
+
+POST /feedback/structured
+
+Input:
+
+receiver_id
+
+cycle_id
+
+numeric scores (e.g., support, communication)
+
+optional comments (what helped, what could improve)
+
+Backend:
+
+Validated that receiver was manager or peer.
+
+Stored structured_feedback with giver_id and receiver_id, but never exposed giver identity in UI.
+
+Aggregation & insights
+
+POST /cycles/{cycle_id}/aggregate (could be triggered manually in MVP)
+
+Backend:
+
+Queried all rants and structured_feedback for the cycle.
+
+Grouped rants by theme and computed sentiment summaries and counts.
+
+Selected a few safe anonymized example comments per theme.
+
+Wrote results into cycle_insights.
+
+Marked cycle status as “aggregated.”
+
+Manager dashboard routes
+
+GET /cycles/{cycle_id}/themes
+
+Returned:
+
+Overall participation numbers (counts, percentages).
+
+For each theme:
+
+theme
+
+count
+
+sentiment_summary
+
+example_comments (if anonymity threshold met).
+
+GET /cycles/{cycle_id}/manager-summary
+
+Returned:
+
+Aggregated structured feedback about the manager (average scores, comment snippets).
+
+Only if number of distinct givers ≥ anonymity threshold.
+
+POST /cycles/{cycle_id}/actions
+
+Input:
+
+theme
+
+action_text
+
+Backend: stored manager’s action for the cycle + theme.
+
+Employee view routes
+
+GET /cycles/{cycle_id}/summary
+
+Returned:
+
+Top themes and their descriptions.
+
+The manager’s actions for each theme.
+
+Showed aggregated information only, no individual scores or comments tied to specific people.
+
+AI integration (conceptual)
+
+A dedicated service layer inside the backend (e.g., app/services/ai.py) encapsulated all AI calls.
+
+Functions included:
+
+deidentify_text(raw_text, employee_names) -> anonymized_text
+
+classify_theme_and_sentiment(text) -> { theme, sentiment }
+
+The MVP used OpenAI or similar models to:
+
+Remove names and obvious identifiers using a known list of employees.
+
+Classify text into themes such as communication, workload, leadership, tools, onboarding, etc.
+
+Assign a coarse sentiment score.
+
+For MVP, AI calls could happen synchronously in the request/response cycle. In later versions, heavy processing or full-cycle aggregation could move to background jobs.
+
+Frontend behavior (React + TypeScript)
+
+Pages / routes
+
+Login page (/login)
+
+Form to enter email and password.
+
+On success, stored token (e.g., in memory/localStorage) and redirected user.
+
+Redirect target depended on role:
+
+Employee → /feedback
+
+Manager → /dashboard
+
+Employee feedback page (/feedback)
+
+Rant section:
+
+Text area for an anonymous rant.
+
+Optional tags (workload, communication, leadership, tools, culture, onboarding, other).
+
+Submit button calling POST /feedback/rant.
+
+Structured feedback section:
+
+Showed a small list of people to provide feedback on:
+
+Typically their manager + 2–3 peers.
+
+For each selected person:
+
+1–2 rating questions (1–5 scale).
+
+“What helped?” and “What could they do differently?” text fields.
+
+Submitted as one or multiple calls to POST /feedback/structured (or batched).
+
+Manager dashboard page (/dashboard)
+
+Selector for current cycle.
+
+Overview:
+
+Participation summary.
+
+Number of rants and structured feedback entries.
+
+Themes section:
+
+Cards or list of top themes (theme name, count, sentiment, trend if available).
+
+Each theme expandable to show example anonymized comments.
+
+“Add action” input per theme that called POST /cycles/{cycle_id}/actions.
+
+Manager feedback section:
+
+Summaries of how the manager was rated (structured feedback), only when anonymity threshold conditions were satisfied.
+
+Team summary page (/summary or integrated into /dashboard for employees)
+
+After aggregation and manager actions, employees could see:
+
+Top team themes.
+
+Manager’s actions per theme.
+
+Frontend integration with backend
+
+A small API client wrapper handled:
+
+Base URL for the API.
+
+Attaching auth token in headers.
+
+Basic error handling.
+
+Example API usage:
+
+Login: POST /auth/login → store token.
+
+Submit rant: POST /feedback/rant with { text, tags }.
+
+Fetch themes: GET /cycles/{cycle_id}/themes.
+
+Submit action: POST /cycles/{cycle_id}/actions.
+
+Anonymity and thresholds
+
+Anonymity threshold (e.g., 5 distinct givers per cycle) was central:
+
+No per-person summaries, comments, or themes were shown in the manager or employee views unless the number of contributors was above this threshold.
+
+Manager and employees never saw:
+
+Who gave individual feedback.
+
+Exact rant text that could obviously identify a specific individual; AI de-identification and possibly manual filters were used.
+
+Non-goals and constraints for MVP
+
+No voice or audio input yet (text-only rants and comments).
+
+No Slack/Teams or HRIS integrations.
+
+No multi-team hierarchy UI beyond a single team + manager.
+
+No advanced configuration:
+
+Fixed question set for structured feedback.
+
+Single anonymity threshold.
+
+One feedback cadence for the pilot team.
+
+Minimal UI customization (focus on clean, usable defaults).
+
+Intended development approach
+
+Local development:
+
+Backend and frontend ran locally (possibly via docker-compose).
+
+Uses a local Postgres instance.
+
+Version control:
+
+All code committed and pushed to GitHub in the “Surface” repo.
+
+Deployment (later):
+
+Backend containerized and deployed to AWS (e.g., ECS Fargate).
+
+Postgres hosted on AWS RDS.
+
+Frontend built and deployed via S3 + CloudFront or AWS Amplify.
