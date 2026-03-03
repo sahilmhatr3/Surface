@@ -14,8 +14,12 @@ class Settings(BaseSettings):
         description="PostgreSQL connection URL",
     )
 
-    # JWT (stub; used in Checkpoint 2)
-    SECRET_KEY: str = Field(default="change-me-in-production", description="JWT signing secret")
+    # JWT: set SECRET_KEY in .env for production (min 32 chars recommended)
+    SECRET_KEY: str = Field(
+        default="change-me-in-production-dev-only",
+        min_length=16,
+        description="JWT signing secret; must be set via env in production",
+    )
     ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24 * 7, description="Token expiry in minutes")
 

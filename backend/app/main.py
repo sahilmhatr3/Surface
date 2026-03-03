@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.routes import auth
 
 app = FastAPI(
     title="Surface API",
@@ -27,9 +28,4 @@ def health():
     return {"status": "ok"}
 
 
-# Route modules will be included here:
-# from app.routes import auth, admin, feedback, cycles
-# app.include_router(auth.router, prefix="/auth", tags=["auth"])
-# app.include_router(admin.router, prefix="/admin", tags=["admin"])
-# app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
-# app.include_router(cycles.router, prefix="/cycles", tags=["cycles"])
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
