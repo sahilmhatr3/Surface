@@ -99,6 +99,22 @@ class CycleInsight(Base):
     example_comments: Mapped[list] = mapped_column(JSON, nullable=False)  # list of anonymized snippets
 
 
+class CycleReceiverSummary(Base):
+    """
+    Aggregated structured feedback per receiver per cycle.
+    Written during aggregation; allows deletion of raw structured_feedback after aggregate.
+    """
+    __tablename__ = "cycle_receiver_summary"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("feedback_cycles.id"), nullable=False, index=True)
+    receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    respondent_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    average_scores: Mapped[dict] = mapped_column(JSON, nullable=False)
+    snippets_helpful: Mapped[list] = mapped_column(JSON, nullable=False)
+    snippets_improvement: Mapped[list] = mapped_column(JSON, nullable=False)
+
+
 class Action(Base):
     __tablename__ = "actions"
 

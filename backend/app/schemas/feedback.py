@@ -1,0 +1,72 @@
+"""
+Feedback: rants and structured feedback.
+"""
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+SCORE_MIN, SCORE_MAX = 1, 5
+
+
+class RantCreate(BaseModel):
+    """Request to submit an anonymous rant."""
+
+    cycle_id: int
+    text: str = Field(..., min_length=1, max_length=10_000)
+    tags: list[str] = Field(default_factory=list, max_length=10)
+
+
+class RantResponse(BaseModel):
+    """Rant as returned after submission (no user identity or raw text)."""
+
+    id: int
+    cycle_id: int
+    theme: str
+    sentiment: str
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class StructuredFeedbackScores(BaseModel):
+    """Scores for structured feedback dimensions (1–5). Start with support and communication."""
+
+    support: int = Field(..., ge=SCORE_MIN, le=SCORE_MAX)
+    communication: int = Field(..., ge=SCORE_MIN, le=SCORE_MAX)
+
+
+class StructuredFeedbackCreate(BaseModel):
+    """Request to submit structured feedback for one receiver (single submit)."""
+
+    receiver_id: int
+    cycle_id: int
+    scores: StructuredFeedbackScores
+    comments_helpful: str | None = Field(None, max_length=2000)
+    comments_improvement: str | None = Field(None, max_length=2000)
+
+
+class StructuredFeedbackBatchItem(BaseModel):
+    """One item in a batch (cycle_id provided at batch level)."""
+
+    receiver_id: int
+    scores: StructuredFeedbackScores
+    comments_helpful: str | None = Field(None, max_length=2000)
+    comments_improvement: str | None = Field(None, max_length=2000)
+
+
+class StructuredFeedbackBatchCreate(BaseModel):
+    """Batch of structured feedback (one per teammate) for a single cycle."""
+
+    cycle_id: int
+    feedback: list[StructuredFeedbackBatchItem] = Field(..., min_length=1, max_length=50)
+
+
+class StructuredFeedbackResponse(BaseModel):
+    """Confirmation of structured feedback submission (no giver identity)."""
+
+    id: int
+    cycle_id: int
+    receiver_id: int
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
