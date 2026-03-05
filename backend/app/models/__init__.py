@@ -57,6 +57,8 @@ class FeedbackCycle(Base):
     start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # open, closed, aggregated
+    participation_rants: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    participation_structured: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     team = relationship("Team", back_populates="feedback_cycles")
