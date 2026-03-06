@@ -59,6 +59,7 @@ class FeedbackCycle(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # open, closed, aggregated
     participation_rants: Mapped[int | None] = mapped_column(Integer, nullable=True)
     participation_structured: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # AI-generated from rants + structured feedback
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     team = relationship("Team", back_populates="feedback_cycles")

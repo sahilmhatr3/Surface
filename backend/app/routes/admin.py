@@ -11,6 +11,7 @@ from app.models import FeedbackCycle, Team, User
 from app.schemas.admin import (
     CycleCreate,
     CycleResponse,
+    CycleUpdate,
     TeamResponse,
     UserImportRow,
     UsersImportRequest,
@@ -106,6 +107,21 @@ def list_teams(db: Session = Depends(get_db)):
     return teams
 
 
+@router.get("/teams/{team_id}/cycles", response_model=list[CycleResponse])
+def list_team_cycles(team_id: int, db: Session = Depends(get_db)):
+    """List all feedback cycles for a team. Admin only."""
+    team = db.get(Team, team_id)
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    cycles = (
+        db.query(FeedbackCycle)
+        .filter(FeedbackCycle.team_id == team_id)
+        .order_by(FeedbackCycle.start_date.desc())
+        .all()
+    )
+    return cycles
+
+
 @router.post("/teams/{team_id}/cycles", response_model=CycleResponse)
 def create_cycle(
     team_id: int,
@@ -126,6 +142,31 @@ def create_cycle(
         status="open",
     )
     db.add(cycle)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+@router.patch("/teams/{team_id}/cycles/{cycle_id}", response_model=CycleResponse)
+def update_cycle(
+    team_id: int,
+    cycle_id: int,
+    body: CycleUpdate,
+    db: Session = Depends(get_db),
+):
+    """Admin: close cycle early or extend end_date. Only status and end_date are updatable."""
+    cycle = db.get(FeedbackCycle, cycle_id)
+    if not cycle or cycle.team_id != team_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cycle not found")
+    if body.status is not None:
+        if body.status not in ("open", "closed", "aggregated"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status")
+        cycle.status = body.status
+    if body.end_date is not None:
+        end = body.end_date if body.end_date.tzinfo else body.end_date.replace(tzinfo=timezone.utc)
+        if end <= cycle.start_date:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be after start_date")
+        cycle.end_date = end
     db.commit()
     db.refresh(cycle)
     return cycle

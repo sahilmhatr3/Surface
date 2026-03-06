@@ -60,6 +60,15 @@ class CycleResponse(BaseModel):
     start_date: datetime
     end_date: datetime
     status: str
+    participation_rants: int | None = None
+    participation_structured: int | None = None
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CycleUpdate(BaseModel):
+    """Admin: close early or extend cycle window."""
+
+    status: str | None = Field(None, description="e.g. open, closed")
+    end_date: datetime | None = Field(None, description="New end date (e.g. to extend)")

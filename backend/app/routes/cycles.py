@@ -2,12 +2,15 @@
 Cycle routes: themes, manager summary, actions, employee summary.
 All require auth; some require manager of the cycle's team.
 """
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db import get_db
 from app.models import Action, CycleInsight, CycleReceiverSummary, FeedbackCycle, User
+from app.services.aggregation import run_aggregation
 from app.schemas.cycles import (
     ActionCreate,
     ActionResponse,
@@ -17,6 +20,7 @@ from app.schemas.cycles import (
     ThemesResponse,
     CycleSummaryResponse,
 )
+from app.schemas.admin import CycleResponse
 from app.core.security import get_current_user
 
 router = APIRouter()
@@ -24,10 +28,22 @@ router = APIRouter()
 BELOW_THRESHOLD_NOTE = "Theme expressed but not enough responses to show anonymized example comments."
 
 
+def _maybe_auto_close(db: Session, cycle: FeedbackCycle) -> None:
+    """If cycle is open and end_date has passed, set status to closed."""
+    if cycle.status != "open":
+        return
+    now = datetime.now(timezone.utc)
+    end = cycle.end_date if cycle.end_date.tzinfo else cycle.end_date.replace(tzinfo=timezone.utc)
+    if end < now:
+        cycle.status = "closed"
+        db.commit()
+
+
 def _get_cycle(db: Session, cycle_id: int) -> FeedbackCycle:
     cycle = db.get(FeedbackCycle, cycle_id)
     if not cycle:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cycle not found")
+    _maybe_auto_close(db, cycle)
     return cycle
 
 
@@ -52,6 +68,27 @@ def _require_cycle_manager(cycle: FeedbackCycle, user: User, db: Session) -> Non
     manager_id = _get_team_manager_id(db, cycle.team_id)
     if manager_id is None or user.id != manager_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager access required")
+
+
+@router.get("", response_model=list[CycleResponse])
+def list_cycles(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    List feedback cycles for the current user's team. Returns empty list if user has no team (e.g. admin).
+    """
+    if current_user.team_id is None:
+        return []
+    cycles = (
+        db.query(FeedbackCycle)
+        .filter(FeedbackCycle.team_id == current_user.team_id)
+        .order_by(FeedbackCycle.start_date.desc())
+        .all()
+    )
+    for c in cycles:
+        _maybe_auto_close(db, c)
+    return cycles
 
 
 @router.get("/{cycle_id}/themes", response_model=ThemesResponse)
@@ -181,6 +218,32 @@ def update_action(
     return action
 
 
+@router.post("/{cycle_id}/aggregate", response_model=CycleResponse)
+def aggregate_cycle(
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Run aggregation for a closed cycle: build themes and per-receiver summaries,
+    set participation counts, then delete raw rants and structured feedback.
+    Requires manager of the cycle's team or admin. Cycle must be closed.
+    """
+    cycle = _get_cycle(db, cycle_id)
+    _require_cycle_manager(cycle, current_user, db)
+    if cycle.status != "closed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cycle must be closed before aggregation. Close it via admin PATCH first.",
+        )
+    try:
+        run_aggregation(db, cycle_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    cycle = _get_cycle(db, cycle_id)
+    return cycle
+
+
 @router.get("/{cycle_id}/summary", response_model=CycleSummaryResponse)
 def get_summary(
     cycle_id: int,
@@ -213,5 +276,5 @@ def get_summary(
         cycle_id=cycle_id,
         themes=themes,
         actions=[ActionResponse.model_validate(a) for a in actions],
-        summary_text=None,
+        summary_text=cycle.summary_text,
     )
