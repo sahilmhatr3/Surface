@@ -12,6 +12,7 @@ from app.schemas.feedback import (
     StructuredFeedbackBatchCreate,
     StructuredFeedbackCreate,
     StructuredFeedbackResponse,
+    TeammateResponse,
 )
 from app.core.config import settings
 from app.core.security import get_current_user
@@ -39,6 +40,26 @@ def _team_member_names(db: Session, team_id: int) -> list[str]:
     """Return list of team member names for de-identification."""
     users = db.query(User).filter(User.team_id == team_id).all()
     return [u.name for u in users if u.name]
+
+
+@router.get("/teammates", response_model=list[TeammateResponse])
+def get_teammates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    List teammates (same team, excluding self) for feedback receiver picker.
+    Returns id and name only. Users with no team get empty list.
+    """
+    if current_user.team_id is None:
+        return []
+    users = (
+        db.query(User)
+        .filter(User.team_id == current_user.team_id, User.id != current_user.id)
+        .order_by(User.name)
+        .all()
+    )
+    return [TeammateResponse(id=u.id, name=u.name) for u in users]
 
 
 @router.post("/rant", response_model=RantResponse)

@@ -72,3 +72,9 @@ class CycleUpdate(BaseModel):
 
     status: str | None = Field(None, description="e.g. open, closed")
     end_date: datetime | None = Field(None, description="New end date (e.g. to extend)")
+
+
+class SetPasswordRequest(BaseModel):
+    """Admin: set or reset password for a user (e.g. after import)."""
+
+    password: str = Field(..., min_length=8, max_length=128)

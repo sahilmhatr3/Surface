@@ -25,12 +25,15 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An account with this email already exists",
         )
+    # Treat 0 as "no team / no manager" so FK constraints are not violated (no id=0)
+    team_id = body.team_id if body.team_id else None
+    manager_id = body.manager_id if body.manager_id else None
     user = User(
         email=body.email.lower(),
         name=body.name.strip(),
         role=body.role,
-        team_id=body.team_id,
-        manager_id=body.manager_id,
+        team_id=team_id,
+        manager_id=manager_id,
         password_hash=hash_password(body.password),
     )
     db.add(user)

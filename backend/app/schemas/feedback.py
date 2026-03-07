@@ -70,3 +70,10 @@ class StructuredFeedbackResponse(BaseModel):
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class TeammateResponse(BaseModel):
+    """Teammate (id, name) for feedback receiver picker. Excludes current user."""
+
+    id: int
+    name: str

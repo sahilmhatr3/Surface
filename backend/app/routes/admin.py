@@ -12,12 +12,15 @@ from app.schemas.admin import (
     CycleCreate,
     CycleResponse,
     CycleUpdate,
+    SetPasswordRequest,
     TeamResponse,
     UserImportRow,
     UsersImportRequest,
     UsersImportResponse,
 )
+from app.schemas.auth import UserResponse
 from app.core.security import get_current_admin_user
+from app.services.auth import hash_password
 
 router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 
@@ -98,6 +101,30 @@ def import_users(body: UsersImportRequest, db: Session = Depends(get_db)):
         users_created=users_created,
         errors=errors if errors else [],
     )
+
+
+@router.get("/users", response_model=list[UserResponse])
+def list_users(db: Session = Depends(get_db)):
+    """List all users (id, name, email, role, team_id, manager_id). Use to find user_id for set-password."""
+    users = db.query(User).order_by(User.email).all()
+    return users
+
+
+@router.patch("/users/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+def set_user_password(
+    user_id: int,
+    body: SetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Set or reset password for a user. Use for imported users who have no password yet.
+    Admin only.
+    """
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user.password_hash = hash_password(body.password)
+    db.commit()
 
 
 @router.get("/teams", response_model=list[TeamResponse])

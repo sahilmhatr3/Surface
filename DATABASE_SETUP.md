@@ -4,6 +4,14 @@ This guide explains how PostgreSQL fits into your project, how to install/start 
 
 ---
 
+## Do I need to run Alembic? **Yes.**
+
+The app does **not** create tables automatically. All tables (`users`, `teams`, `feedback_cycles`, `rants`, etc.) are created only when you run Alembic migrations. Until you run `alembic upgrade head`, the database is empty (or missing tables) and the API will fail on use.
+
+**Order of operations:** (1) PostgreSQL running → (2) Create user + database (once) → (3) Run `alembic upgrade head` (once, then again when new migrations are added).
+
+---
+
 ## 1. How PostgreSQL Fits In
 
 - **PostgreSQL** is a separate program (a “database server”) that runs on your machine. It is **not** inside your Surface project folder.
@@ -54,10 +62,10 @@ sudo -u postgres psql -c "SELECT 1"
 
 ## 4. Create the Database and User Your App Expects
 
-Your config expects a **database** named `surface` and a **user** `surface` with password `surface`. Create them once:
+Your config expects a **database** named `surface` and a **user** `surface` with password `surface`. Create them once **as the Postgres superuser** (the `surface` user does not exist until you create it; that’s why “surface” as password doesn’t work when nothing has been created yet):
 
 ```bash
-# Connect as the default superuser
+# Connect as the default superuser (no password; uses system auth)
 sudo -u postgres psql
 
 # Then in the psql prompt, run:
@@ -66,7 +74,7 @@ CREATE USER surface WITH PASSWORD 'surface';
 CREATE DATABASE surface OWNER surface;
 GRANT ALL PRIVILEGES ON DATABASE surface TO surface;
 
--- Optional: allow surface to create schema (needed for Alembic)
+-- Required so Alembic can create tables
 \c surface
 GRANT ALL ON SCHEMA public TO surface;
 
@@ -75,9 +83,15 @@ GRANT ALL ON SCHEMA public TO surface;
 
 **What this does:**
 
-- **CREATE USER** – Creates the login your app uses (`surface` / `surface`).
-- **CREATE DATABASE** – Creates the database named `surface` that your app connects to.
+- **CREATE USER** – Creates the login your app uses (`surface` / `surface`). If you get “already exists”, the user was created before; to **reset the password** use: `ALTER USER surface WITH PASSWORD 'surface';`
+- **CREATE DATABASE** – Creates the database named `surface`. If it already exists, skip that line.
 - **OWNER / GRANT** – Gives the `surface` user permission to create tables and use that database. Alembic will run as this user and create tables here.
+
+**If “surface” as password still doesn’t work when connecting:**
+
+- Make sure you’re connecting with `-h localhost` (e.g. `psql -h localhost -U surface -d surface`). On some setups, connection without `-h` uses peer auth and ignores the password.
+- Try: `PGPASSWORD=surface psql -h localhost -U surface -d surface -c "SELECT 1"` to avoid typing the password.
+- Ensure the user exists and the password is set: as `postgres`, run `ALTER USER surface WITH PASSWORD 'surface';`
 
 ---
 
@@ -100,10 +114,10 @@ If you get a `surface=>` prompt, the database and user are set up correctly. Typ
 Alembic must run **from the backend directory** and use the **same Python environment** that has your app and Alembic installed (e.g. your `venv`).
 
 ```bash
-cd /home/sahil/projects/Surface/backend
+cd /path/to/Surface/backend
 
-# Use the virtual environment
-source venv/bin/activate
+# Use the project virtual environment (.venv or venv)
+source .venv/bin/activate   # or: source venv/bin/activate
 
 # Now Alembic and your app’s config are available
 alembic current
@@ -132,8 +146,8 @@ Your **tables** (users, teams, rants, etc.) don’t exist until you run migratio
 Run:
 
 ```bash
-cd /home/sahil/projects/Surface/backend
-source venv/bin/activate
+cd /path/to/Surface/backend
+source .venv/bin/activate   # or venv/bin/activate
 alembic upgrade head
 ```
 
@@ -152,8 +166,8 @@ After this, your database is “booted” for the app: all tables exist and Alem
 ## 8. Useful Commands (All From `backend/` With venv Active)
 
 ```bash
-cd /home/sahil/projects/Surface/backend
-source venv/bin/activate
+cd /path/to/Surface/backend
+source .venv/bin/activate
 
 # What’s the current migration version? (which migrations are applied)
 alembic current
