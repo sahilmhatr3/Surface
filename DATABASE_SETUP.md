@@ -1,3 +1,15 @@
+# Self reference notes: ()
+backend:
+source .venv/bin/activate
+uvicorn app.main:app --reload
+psql -h localhost -p 5432 -U surface -d surface
+alembic upgrade head
+http://127.0.0.1:8000/docs#/
+
+frontend:
+npm install
+npm run dev
+
 # Surface – PostgreSQL & Alembic Setup
 
 This guide explains how PostgreSQL fits into your project, how to install/start it, and how to run Alembic to create your database tables.
