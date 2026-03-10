@@ -14,7 +14,7 @@ Below is an in-depth description of what is implemented and how a typical flow w
 - **GET /auth/me** – Current user (id, name, email, role, team_id, etc.).
 
 ### Admin (`/admin`) – all require admin role
-- **POST /admin/users/import** – Bulk create users and teams (JSON body: list of users with name, email, role, team_name, optional manager_email). Creates teams by name, then users, then resolves manager_id.
+- **POST /admin/users/import** – Bulk create users and teams (JSON body: list of users with name, email, role, team_name, optional manager_id). Creates teams by name, then users; manager_id must be an existing user ID.
 - **GET /admin/teams** – List all teams (id, name).
 - **GET /admin/teams/{team_id}/cycles** – List all cycles for a team (id, team_id, start/end date, status, participation counts, created_at).
 - **POST /admin/teams/{team_id}/cycles** – Create cycle (body: start_date, end_date). Status set to `open`.

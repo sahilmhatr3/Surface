@@ -66,6 +66,33 @@ export const authApi = {
     }),
 
   me: () => request<import("./types").UserResponse>("/auth/me"),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    }),
+
+  forgotPassword: (email: string) =>
+    request<{ message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  verifyResetOtp: (email: string, otp: string) =>
+    request<{ reset_token: string }>("/auth/verify-reset-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, otp }),
+    }),
+
+  resetPassword: (resetToken: string, newPassword: string) =>
+    request<void>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ reset_token: resetToken, new_password: newPassword }),
+    }),
 };
 
 // ---- Admin (require admin role) ----
@@ -82,6 +109,18 @@ export const adminApi = {
   setUserPassword: (userId: number, password: string) =>
     request<void>(`/admin/users/${userId}/password`, {
       method: "PATCH",
+      body: JSON.stringify({ password }),
+    }),
+
+  generateUserPassword: (userId: number) =>
+    request<{ temporary_password: string }>(`/admin/users/${userId}/password`, {
+      method: "PATCH",
+      body: JSON.stringify({ generate: true }),
+    }),
+
+  verifyAdminPassword: (password: string) =>
+    request<void>("/admin/verify-password", {
+      method: "POST",
       body: JSON.stringify({ password }),
     }),
 

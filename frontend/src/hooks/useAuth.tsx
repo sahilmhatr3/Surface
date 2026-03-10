@@ -8,6 +8,7 @@ import {
 } from "react";
 import { authApi, setToken, clearToken } from "../api/client";
 import type { UserResponse } from "../api/types";
+import type { Token } from "../api/types";
 
 interface AuthState {
   user: UserResponse | null;
@@ -16,7 +17,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<Token>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -52,11 +53,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshUser]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string): Promise<Token> => {
       setError(null);
-      const { access_token } = await authApi.login({ email, password });
-      setToken(access_token);
+      const token = await authApi.login({ email, password });
+      setToken(token.access_token);
       await refreshUser();
+      return token;
     },
     [refreshUser]
   );

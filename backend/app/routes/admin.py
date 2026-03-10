@@ -1,9 +1,12 @@
 """
 Admin routes: user/team import, create cycle. All require admin role.
 """
+import secrets
+import string
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -13,14 +16,16 @@ from app.schemas.admin import (
     CycleResponse,
     CycleUpdate,
     SetPasswordRequest,
+    SetPasswordResponse,
     TeamResponse,
     UserImportRow,
     UsersImportRequest,
     UsersImportResponse,
+    VerifyPasswordRequest,
 )
 from app.schemas.auth import UserResponse
 from app.core.security import get_current_admin_user
-from app.services.auth import hash_password
+from app.services.auth import hash_password, verify_password
 
 router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 
@@ -29,7 +34,8 @@ router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 def import_users(body: UsersImportRequest, db: Session = Depends(get_db)):
     """
     Import users and teams from JSON. Creates teams by unique team_name, then users.
-    manager_email is resolved after all users are created. Duplicate emails are skipped with an error.
+    manager_id is the ID of an existing user (manager); omit for managers/admins or top-level.
+    Duplicate emails are skipped with an error.
     Imported users have no password (password_hash null) until they set one or are invited.
     """
     errors: list[str] = []
@@ -65,34 +71,24 @@ def import_users(body: UsersImportRequest, db: Session = Depends(get_db)):
         if not team:
             errors.append(f"Unknown team name: {row.team_name}")
             continue
+        manager_id = row.manager_id
+        if manager_id is not None:
+            manager = db.get(User, manager_id)
+            if not manager:
+                errors.append(f"Manager ID not found for {email}: {manager_id}")
+                manager_id = None
         user = User(
             name=row.name.strip(),
             email=email,
             role=row.role,
             team_id=team.id,
-            manager_id=None,
+            manager_id=manager_id,
             password_hash=None,
         )
         db.add(user)
         db.flush()
         user_by_email[email] = user
         users_created += 1
-
-    db.commit()
-
-    # Resolve manager_id by manager_email
-    for row in body.users:
-        if not row.manager_email:
-            continue
-        email = row.email.lower().strip()
-        user = user_by_email.get(email)
-        if not user:
-            continue
-        manager = db.query(User).filter(User.email == row.manager_email.strip().lower()).first()
-        if manager:
-            user.manager_id = manager.id
-        else:
-            errors.append(f"Manager email not found for {email}: {row.manager_email}")
 
     db.commit()
 
@@ -110,21 +106,50 @@ def list_users(db: Session = Depends(get_db)):
     return users
 
 
-@router.patch("/users/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+def _generate_temporary_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+@router.patch("/users/{user_id}/password")
 def set_user_password(
     user_id: int,
     body: SetPasswordRequest,
     db: Session = Depends(get_db),
 ):
     """
-    Set or reset password for a user. Use for imported users who have no password yet.
+    Set or reset password for a user, or generate a random one.
+    When generate=true, returns 200 with { temporary_password } for the admin to share.
+    When password=..., returns 204 No Content.
     Admin only.
     """
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    user.password_hash = hash_password(body.password)
-    db.commit()
+    if body.generate:
+        temporary = _generate_temporary_password()
+        user.password_hash = hash_password(temporary)
+        user.must_reset_password = True
+        db.commit()
+        return SetPasswordResponse(temporary_password=temporary)
+    else:
+        assert body.password
+        user.password_hash = hash_password(body.password)
+        user.must_reset_password = True
+        db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/verify-password", status_code=status.HTTP_204_NO_CONTENT)
+def verify_admin_password(
+    body: VerifyPasswordRequest,
+    current_user: User = Depends(get_current_admin_user),
+):
+    """Verify the current admin's password. Use before revealing a generated user password."""
+    if not current_user.password_hash:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No password set")
+    if not verify_password(body.password, current_user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password")
 
 
 @router.get("/teams", response_model=list[TeamResponse])
@@ -194,6 +219,10 @@ def update_cycle(
         if end <= cycle.start_date:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be after start_date")
         cycle.end_date = end
+        # Re-open cycle when extending into the future so feedback is allowed again
+        now = datetime.now(timezone.utc)
+        if end > now and cycle.status == "closed":
+            cycle.status = "open"
     db.commit()
     db.refresh(cycle)
     return cycle

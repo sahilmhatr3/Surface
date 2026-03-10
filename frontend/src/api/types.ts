@@ -11,11 +11,13 @@ export interface UserResponse {
   role: string;
   team_id: number | null;
   manager_id: number | null;
+  must_reset_password?: boolean;
 }
 
 export interface Token {
   access_token: string;
   token_type: string;
+  password_reset_required?: boolean;
 }
 
 export interface RegisterResponse {
@@ -44,7 +46,7 @@ export interface UserImportRow {
   email: string;
   role: "employee" | "manager" | "admin";
   team_name: string;
-  manager_email?: string | null;
+  manager_id?: number | null;
 }
 
 export interface UsersImportRequest {

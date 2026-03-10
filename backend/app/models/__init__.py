@@ -2,7 +2,7 @@
 SQLAlchemy models. Import Base from app.db.
 """
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, ForeignKey, DateTime, JSON
+from sqlalchemy import String, Text, Integer, ForeignKey, DateTime, JSON, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -31,6 +31,7 @@ class User(Base):
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True, index=True)
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    must_reset_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

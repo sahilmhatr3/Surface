@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { ApiError } from "../api/client";
 
@@ -19,8 +19,8 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
-      await login(email, password);
-      navigate("/dashboard");
+      const token = await login(email, password);
+      navigate(token.password_reset_required ? "/change-password" : "/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed");
     } finally {
@@ -65,6 +65,14 @@ export default function Login() {
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
+          <p className="mt-3 text-center">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-surface-text-muted hover:text-surface-accent-cyan transition-colors"
+            >
+              Forgot password?
+            </Link>
+          </p>
         </form>
       </div>
     </section>

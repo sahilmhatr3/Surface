@@ -13,7 +13,7 @@ class UserImportRow(BaseModel):
     email: EmailStr
     role: str = Field(..., pattern="^(employee|manager|admin)$")
     team_name: str = Field(..., min_length=1, max_length=255)
-    manager_email: str | None = Field(None, description="Email of this user's manager; omit for managers/admins or top-level.")
+    manager_id: int | None = Field(None, description="ID of this user's manager; omit for managers/admins or top-level.")
 
 
 class UsersImportRequest(BaseModel):
@@ -75,6 +75,27 @@ class CycleUpdate(BaseModel):
 
 
 class SetPasswordRequest(BaseModel):
-    """Admin: set or reset password for a user (e.g. after import)."""
+    """Admin: set or reset password for a user, or generate a random one."""
 
-    password: str = Field(..., min_length=8, max_length=128)
+    password: str | None = Field(None, min_length=8, max_length=128)
+    generate: bool = Field(False, description="If true, generate random password and return it; ignore password.")
+
+    @model_validator(mode="after")
+    def require_password_or_generate(self):
+        if not self.generate and not self.password:
+            raise ValueError("Provide password or set generate=true")
+        if self.generate and self.password:
+            raise ValueError("Use either password or generate, not both")
+        return self
+
+
+class SetPasswordResponse(BaseModel):
+    """Returned when generate=true; one-time temporary password for admin to share."""
+
+    temporary_password: str
+
+
+class VerifyPasswordRequest(BaseModel):
+    """Admin: verify own password before revealing a generated user password."""
+
+    password: str = Field(..., min_length=1, max_length=128)
