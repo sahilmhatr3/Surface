@@ -111,6 +111,7 @@ def change_password(
         )
     current_user.password_hash = hash_password(body.new_password)
     current_user.must_reset_password = False
+    current_user.temporary_password_plaintext = None
     db.commit()
 
 
@@ -166,4 +167,5 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
         )
     user.password_hash = hash_password(body.new_password)
     user.must_reset_password = False
+    user.temporary_password_plaintext = None
     db.commit()

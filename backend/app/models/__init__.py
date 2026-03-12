@@ -31,12 +31,17 @@ class User(Base):
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True, index=True)
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    temporary_password_plaintext: Mapped[str | None] = mapped_column(String(255), nullable=True)
     must_reset_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
     team = relationship("Team", back_populates="users")
     manager = relationship("User", remote_side=[id])
+
+    @property
+    def has_temporary_password(self) -> bool:
+        return bool(self.temporary_password_plaintext)
 
 
 class Team(Base):

@@ -46,6 +46,7 @@ class UserResponse(BaseModel):
     team_id: int | None
     manager_id: int | None
     must_reset_password: bool = False
+    has_temporary_password: bool = False
 
     model_config = {"from_attributes": True}
 

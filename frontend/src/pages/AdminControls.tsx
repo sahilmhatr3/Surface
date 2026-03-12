@@ -80,6 +80,14 @@ export default function AdminControls() {
   const [createRows, setCreateRows] = useState<UserImportRow[]>([]);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createResult, setCreateResult] = useState<string | null>(null);
+  const [createTeamModalOpen, setCreateTeamModalOpen] = useState(false);
+  const [createTeamName, setCreateTeamName] = useState("");
+  const [createTeamSubmitting, setCreateTeamSubmitting] = useState(false);
+  const [createTeamForRowIndex, setCreateTeamForRowIndex] = useState<number | null>(null);
+  const [managerDropdownOpen, setManagerDropdownOpen] = useState<number | null>(null);
+  const [managerSearchQuery, setManagerSearchQuery] = useState<Record<number, string>>({});
+  const [teamDropdownOpen, setTeamDropdownOpen] = useState<number | null>(null);
+  const [teamSearchQuery, setTeamSearchQuery] = useState<Record<number, string>>({});
 
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [cycles, setCycles] = useState<CycleResponse[]>([]);
@@ -128,6 +136,11 @@ export default function AdminControls() {
 
   const teamName = (teamId: number | null) =>
     teamId == null ? "—" : teams.find((t) => t.id === teamId)?.name ?? "—";
+
+  const managersList = useMemo(
+    () => users.filter((u) => u.role === "manager").sort((a, b) => a.name.localeCompare(b.name)),
+    [users]
+  );
 
   const filteredAndSortedUsers = useMemo(() => {
     const q = userSearch.toLowerCase().trim();
@@ -230,8 +243,15 @@ export default function AdminControls() {
     setRevealModalError(null);
     setRevealModalSubmitting(true);
     try {
-      await adminApi.verifyAdminPassword(revealModalAdminPassword);
-      setRevealedPasswords((prev) => new Set(prev).add(revealModalUserId!));
+      const existing = generatedPasswords[revealModalUserId];
+      if (existing) {
+        await adminApi.verifyAdminPassword(revealModalAdminPassword);
+        setRevealedPasswords((prev) => new Set(prev).add(revealModalUserId!));
+      } else {
+        const res = await adminApi.revealUserPassword(revealModalUserId, revealModalAdminPassword);
+        setGeneratedPasswords((prev) => ({ ...prev, [revealModalUserId]: res.temporary_password }));
+        setRevealedPasswords((prev) => new Set(prev).add(revealModalUserId));
+      }
       setRevealModalUserId(null);
       setRevealModalAdminPassword("");
     } catch (e) {
@@ -246,7 +266,20 @@ export default function AdminControls() {
     setCreateSubmitting(true);
     setCreateResult(null);
     try {
-      const res = await adminApi.importUsers({ users: createRows });
+      const payload = createRows.map((r) => ({
+        name: r.name,
+        email: r.email,
+        role: r.role,
+        team_id: r.team_id ?? undefined,
+        team_name: r.team_id == null ? (r.team_name ?? undefined) : undefined,
+        manager_id: r.manager_id ?? undefined,
+      }));
+      const res = await adminApi.importUsers({ users: payload });
+      const pwMap: Record<number, string> = {};
+      (res.created_user_passwords || []).forEach((p) => {
+        pwMap[p.user_id] = p.temporary_password;
+      });
+      setGeneratedPasswords((prev) => ({ ...prev, ...pwMap }));
       setCreateResult(
         `Created ${res.teams_created} team(s), ${res.users_created} user(s).` +
           (res.errors.length ? ` Errors: ${res.errors.join("; ")}` : "")
@@ -267,7 +300,8 @@ export default function AdminControls() {
         name: "",
         email: "",
         role: "employee",
-        team_name: teams[0]?.name ?? "",
+        team_id: teams[0]?.id ?? null,
+        team_name: null,
         manager_id: null,
       },
     ]);
@@ -283,8 +317,13 @@ export default function AdminControls() {
     value: string | number | null
   ) => {
     setCreateRows((r) => {
-      const next = [...r];
-      (next[index] as Record<string, unknown>)[field] = value ?? undefined;
+      const next = r.map((row, i) =>
+        i !== index ? row : { ...row, [field]: value ?? (field === "manager_id" || field === "team_id" ? null : undefined) }
+      );
+      if (field === "role" && (value === "manager" || value === "admin")) {
+        const row = next[index] as UserImportRow;
+        next[index] = { ...row, manager_id: null };
+      }
       return next;
     });
   };
@@ -332,6 +371,34 @@ export default function AdminControls() {
     await handleUpdateCycle(selectedTeamId, extendCycleId, undefined, extendEndDate);
     setExtendCycleId(null);
     setExtendEndDate("");
+  };
+
+  const openCreateTeamModal = (rowIndex: number) => {
+    setCreateTeamForRowIndex(rowIndex);
+    setCreateTeamName("");
+    setCreateTeamModalOpen(true);
+  };
+
+  const handleCreateTeam = async () => {
+    const name = createTeamName.trim();
+    if (!name || createTeamSubmitting) return;
+    setCreateTeamSubmitting(true);
+    try {
+      const team = await adminApi.createTeam(name);
+      setTeams((prev) => [...prev, team]);
+      if (createTeamForRowIndex !== null) {
+        setCreateRows((r) =>
+          r.map((row, i) => (i === createTeamForRowIndex ? { ...row, team_id: team.id } : row))
+        );
+      }
+      setCreateTeamModalOpen(false);
+      setCreateTeamForRowIndex(null);
+      setCreateTeamName("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create team");
+    } finally {
+      setCreateTeamSubmitting(false);
+    }
   };
 
   if (authLoading || !user) return null;
@@ -445,17 +512,19 @@ export default function AdminControls() {
                                 <td className="py-2 pr-3 capitalize">{u.role}</td>
                                 <td className="py-2 pr-3">{teamName(u.team_id)}</td>
                                 <td className="py-2">
-                                  {generatedPasswords[u.id] ? (
+                                  {u.id === user?.id ? (
+                                    <span className="text-surface-text-muted text-sm">—</span>
+                                  ) : generatedPasswords[u.id] || u.has_temporary_password ? (
                                     <span className="inline-flex items-center gap-1">
                                       <span className="font-mono">
-                                        {revealedPasswords.has(u.id)
+                                        {revealedPasswords.has(u.id) && generatedPasswords[u.id]
                                           ? generatedPasswords[u.id]
                                           : "••••••••••••"}
                                       </span>
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          revealedPasswords.has(u.id)
+                                          revealedPasswords.has(u.id) && generatedPasswords[u.id]
                                             ? setRevealedPasswords((prev) => {
                                                 const next = new Set(prev);
                                                 next.delete(u.id);
@@ -464,8 +533,8 @@ export default function AdminControls() {
                                             : setRevealModalUserId(u.id)
                                         }
                                         className="p-1 rounded text-surface-text-muted hover:text-surface-accent-cyan"
-                                        title={revealedPasswords.has(u.id) ? "Hide" : "Reveal (enter your password)"}
-                                        aria-label={revealedPasswords.has(u.id) ? "Hide password" : "Reveal password"}
+                                        title={revealedPasswords.has(u.id) ? "Hide" : "View (enter your password)"}
+                                        aria-label={revealedPasswords.has(u.id) ? "Hide password" : "View password"}
                                       >
                                         <EyeIcon />
                                       </button>
@@ -606,60 +675,151 @@ export default function AdminControls() {
                     Create users
                   </h2>
                   <p className="text-surface-text-muted text-sm mb-4">
-                    Creates teams by name. Add rows and remove any you don’t need before submitting.
+                    Manager/employee get an auto-generated password (view with eye after create).
+                    Select team from dropdown; use “Create new team” to add one. Employees need a manager.
                   </p>
                   {createResult && (
                     <p className="text-sm text-surface-text-muted mb-3">{createResult}</p>
                   )}
                   <div className="space-y-3">
                     {createRows.map((row, i) => (
-                      <div key={i} className="flex flex-wrap items-center gap-2">
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 flex-1 min-w-0">
+                      <div key={i} className="flex flex-wrap items-start gap-2 border-b border-surface-pill-border/50 pb-3">
+                        <input
+                          placeholder="Name"
+                          value={row.name}
+                          onChange={(e) => updateCreateRow(i, "name", e.target.value)}
+                          className={`${inputClass} w-40`}
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email"
+                          value={row.email}
+                          onChange={(e) => updateCreateRow(i, "email", e.target.value)}
+                          className={`${inputClass} w-48`}
+                        />
+                        <select
+                          value={row.role}
+                          onChange={(e) => updateCreateRow(i, "role", e.target.value)}
+                          className={`${inputClass} w-28`}
+                        >
+                          <option value="employee">employee</option>
+                          <option value="manager">manager</option>
+                          <option value="admin">admin</option>
+                        </select>
+                        {/* Team: searchable dropdown with "Create new team" at top */}
+                        <div className="relative min-w-[200px]">
                           <input
-                            placeholder="Name"
-                            value={row.name}
-                            onChange={(e) => updateCreateRow(i, "name", e.target.value)}
+                            type="text"
+                            placeholder="Search or select team…"
+                            value={
+                              teamDropdownOpen === i
+                                ? (teamSearchQuery[i] ?? "")
+                                : row.team_id != null
+                                  ? teams.find((t) => t.id === row.team_id)?.name ?? ""
+                                  : ""
+                            }
+                            onChange={(e) => setTeamSearchQuery((q) => ({ ...q, [i]: e.target.value }))}
+                            onFocus={() => setTeamDropdownOpen(i)}
                             className={inputClass}
                           />
-                          <input
-                            type="email"
-                            placeholder="Email"
-                            value={row.email}
-                            onChange={(e) => updateCreateRow(i, "email", e.target.value)}
-                            className={inputClass}
-                          />
-                          <select
-                            value={row.role}
-                            onChange={(e) => updateCreateRow(i, "role", e.target.value)}
-                            className={inputClass}
-                          >
-                            <option value="employee">employee</option>
-                            <option value="manager">manager</option>
-                            <option value="admin">admin</option>
-                          </select>
-                          <input
-                            placeholder="Team name"
-                            value={row.team_name}
-                            onChange={(e) => updateCreateRow(i, "team_name", e.target.value)}
-                            className={inputClass}
-                          />
-                          <input
-                            type="number"
-                            placeholder="Manager ID (optional)"
-                            min={1}
-                            value={row.manager_id ?? ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              const num = v === "" ? null : parseInt(v, 10);
-                              updateCreateRow(
-                                i,
-                                "manager_id",
-                                num !== null && !Number.isNaN(num) ? num : null
-                              );
-                            }}
-                            className={inputClass}
-                          />
+                          {teamDropdownOpen === i && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-10"
+                                aria-hidden
+                                onClick={() => setTeamDropdownOpen(null)}
+                              />
+                              <div className="absolute z-20 mt-1 rounded-lg border border-surface-pill-border bg-surface-card py-1 w-full max-h-56 overflow-hidden flex flex-col">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    openCreateTeamModal(i);
+                                    setTeamDropdownOpen(null);
+                                  }}
+                                  className="text-left px-3 py-2 text-surface-accent-cyan hover:bg-white/5 text-sm font-medium"
+                                >
+                                  ＋ Create new team
+                                </button>
+                                <ul className="overflow-auto flex-1" role="listbox">
+                                  {teams
+                                    .filter(
+                                      (t) =>
+                                        !teamSearchQuery[i] ||
+                                        t.name.toLowerCase().includes(teamSearchQuery[i].toLowerCase())
+                                    )
+                                    .map((t) => (
+                                      <li
+                                        key={t.id}
+                                        role="option"
+                                        className="px-3 py-2 cursor-pointer hover:bg-white/10 text-sm text-surface-text"
+                                        onClick={() => {
+                                          updateCreateRow(i, "team_id", t.id);
+                                          setTeamSearchQuery((q) => ({ ...q, [i]: "" }));
+                                          setTeamDropdownOpen(null);
+                                        }}
+                                      >
+                                        {t.name}
+                                      </li>
+                                    ))}
+                                </ul>
+                              </div>
+                            </>
+                          )}
                         </div>
+                        {/* Manager: only for employee; searchable dropdown */}
+                        {row.role === "employee" && (
+                          <div className="relative min-w-[200px]">
+                            <input
+                              type="text"
+                              placeholder="Search manager…"
+                              value={
+                                managerDropdownOpen === i
+                                  ? (managerSearchQuery[i] ?? "")
+                                  : row.manager_id != null
+                                    ? managersList.find((m) => m.id === row.manager_id)?.name ?? ""
+                                    : ""
+                              }
+                              onChange={(e) => setManagerSearchQuery((q) => ({ ...q, [i]: e.target.value }))}
+                              onFocus={() => setManagerDropdownOpen(i)}
+                              className={inputClass}
+                            />
+                            {managerDropdownOpen === i && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  aria-hidden
+                                  onClick={() => setManagerDropdownOpen(null)}
+                                />
+                                <ul
+                                  className="absolute z-20 mt-1 max-h-48 overflow-auto rounded-lg border border-surface-pill-border bg-surface-card py-1 w-full"
+                                  role="listbox"
+                                >
+                                  {managersList
+                                    .filter(
+                                      (m) =>
+                                        !managerSearchQuery[i] ||
+                                        m.name.toLowerCase().includes(managerSearchQuery[i].toLowerCase()) ||
+                                        m.email.toLowerCase().includes(managerSearchQuery[i].toLowerCase())
+                                    )
+                                    .map((m) => (
+                                      <li
+                                        key={m.id}
+                                        role="option"
+                                        className="px-3 py-2 cursor-pointer hover:bg-white/10 text-sm text-surface-text"
+                                        onClick={() => {
+                                          updateCreateRow(i, "manager_id", m.id);
+                                          setManagerSearchQuery((q) => ({ ...q, [i]: "" }));
+                                          setManagerDropdownOpen(null);
+                                        }}
+                                      >
+                                        {m.name} ({m.email})
+                                      </li>
+                                    ))}
+                                </ul>
+                              </>
+                            )}
+                          </div>
+                        )}
                         <button
                           type="button"
                           onClick={() => removeCreateRow(i)}
@@ -833,6 +993,46 @@ export default function AdminControls() {
           )}
         </div>
       </div>
+
+      {/* Create team modal */}
+      {createTeamModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className={cardClass + " w-full max-w-sm"}>
+            <h3 className="text-lg font-semibold text-surface-text-strong mb-2">
+              Create new team
+            </h3>
+            <input
+              type="text"
+              placeholder="Team name"
+              value={createTeamName}
+              onChange={(e) => setCreateTeamName(e.target.value)}
+              className={inputClass + " mb-3"}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCreateTeam}
+                disabled={createTeamSubmitting || !createTeamName.trim()}
+                className={btnClass}
+              >
+                {createTeamSubmitting ? "Creating…" : "Create"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateTeamModalOpen(false);
+                  setCreateTeamForRowIndex(null);
+                  setCreateTeamName("");
+                }}
+                className={btnClass}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reveal password modal */}
       {revealModalUserId != null && (

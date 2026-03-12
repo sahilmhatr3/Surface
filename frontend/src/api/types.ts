@@ -12,6 +12,7 @@ export interface UserResponse {
   team_id: number | null;
   manager_id: number | null;
   must_reset_password?: boolean;
+  has_temporary_password?: boolean;
 }
 
 export interface Token {
@@ -45,7 +46,8 @@ export interface UserImportRow {
   name: string;
   email: string;
   role: "employee" | "manager" | "admin";
-  team_name: string;
+  team_id?: number | null;
+  team_name?: string | null;
   manager_id?: number | null;
 }
 
@@ -53,10 +55,17 @@ export interface UsersImportRequest {
   users: UserImportRow[];
 }
 
+export interface CreatedUserPassword {
+  user_id: number;
+  email: string;
+  temporary_password: string;
+}
+
 export interface UsersImportResponse {
   teams_created: number;
   users_created: number;
   errors: string[];
+  created_user_passwords?: CreatedUserPassword[];
 }
 
 export interface TeamResponse {

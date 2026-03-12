@@ -124,8 +124,20 @@ export const adminApi = {
       body: JSON.stringify({ password }),
     }),
 
+  revealUserPassword: (userId: number, adminPassword: string) =>
+    request<{ temporary_password: string }>(`/admin/users/${userId}/reveal-password`, {
+      method: "POST",
+      body: JSON.stringify({ password: adminPassword }),
+    }),
+
   listTeams: () =>
     request<import("./types").TeamResponse[]>("/admin/teams"),
+
+  createTeam: (name: string) =>
+    request<import("./types").TeamResponse>("/admin/teams", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
 
   listTeamCycles: (teamId: number) =>
     request<import("./types").CycleResponse[]>(`/admin/teams/${teamId}/cycles`),
