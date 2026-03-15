@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db import get_db
-from app.models import Action, CycleInsight, CycleReceiverSummary, FeedbackCycle, User
+from app.models import Action, CycleInsight, CycleReceiverSummary, FeedbackCycle, RantDirectedSegment, User
 from app.services.aggregation import run_aggregation
 from app.schemas.cycles import (
     ActionCreate,
     ActionResponse,
     ActionUpdate,
+    DirectedRantSegmentItem,
+    IncomingFeedbackResponse,
     ManagerSummaryResponse,
     ThemeItem,
     ThemesResponse,
@@ -26,6 +28,7 @@ from app.core.security import get_current_user
 router = APIRouter()
 
 BELOW_THRESHOLD_NOTE = "Theme expressed but not enough responses to show anonymized example comments."
+DIRECTED_RANT_BELOW_THRESHOLD_NOTE = "Open feedback was directed at you but there are not enough responses to show anonymized snippets."
 
 
 def _maybe_auto_close(db: Session, cycle: FeedbackCycle) -> None:
@@ -172,6 +175,69 @@ def get_manager_summary(
         comment_snippets_helpful=[] if below else (row.snippets_helpful or []),
         comment_snippets_improvement=[] if below else (row.snippets_improvement or []),
         below_threshold_note=BELOW_THRESHOLD_NOTE if below else None,
+    )
+
+
+@router.get("/{cycle_id}/incoming-feedback", response_model=IncomingFeedbackResponse)
+def get_incoming_feedback(
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    All feedback about the current user for this cycle: structured (scores + comments) and directed open feedback.
+    Available to any team member. Structured part only after cycle is aggregated; directed segments as soon as submitted.
+    Anonymity threshold applied so the receiver can never infer senders.
+    """
+    cycle = _get_cycle(db, cycle_id)
+    _require_team_member(cycle, current_user)
+
+    structured: ManagerSummaryResponse | None = None
+    if cycle.status == "aggregated":
+        row = (
+            db.query(CycleReceiverSummary)
+            .filter(
+                CycleReceiverSummary.cycle_id == cycle_id,
+                CycleReceiverSummary.receiver_id == current_user.id,
+            )
+            .first()
+        )
+        if row:
+            threshold = settings.ANONYMITY_THRESHOLD
+            below = row.respondent_count < threshold
+            structured = ManagerSummaryResponse(
+                cycle_id=cycle_id,
+                average_scores=row.average_scores or {},
+                comment_snippets_helpful=[] if below else (row.snippets_helpful or []),
+                comment_snippets_improvement=[] if below else (row.snippets_improvement or []),
+                below_threshold_note=BELOW_THRESHOLD_NOTE if below else None,
+            )
+        else:
+            structured = ManagerSummaryResponse(
+                cycle_id=cycle_id,
+                average_scores={},
+                comment_snippets_helpful=[],
+                comment_snippets_improvement=[],
+                below_threshold_note="No structured feedback for this cycle.",
+            )
+
+    segments = (
+        db.query(RantDirectedSegment)
+        .filter(
+            RantDirectedSegment.cycle_id == cycle_id,
+            RantDirectedSegment.receiver_id == current_user.id,
+        )
+        .all()
+    )
+    threshold = settings.ANONYMITY_THRESHOLD
+    directed_below = len(segments) < threshold
+    directed_list = [] if directed_below else [DirectedRantSegmentItem(snippet=s.snippet, theme=s.theme, sentiment=s.sentiment) for s in segments]
+
+    return IncomingFeedbackResponse(
+        cycle_id=cycle_id,
+        structured=structured,
+        directed_rant_segments=directed_list,
+        directed_rant_below_threshold_note=DIRECTED_RANT_BELOW_THRESHOLD_NOTE if directed_below and segments else None,
     )
 
 

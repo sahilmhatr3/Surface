@@ -175,6 +175,9 @@ export const cyclesApi = {
   getSummary: (cycleId: number) =>
     request<import("./types").CycleSummaryResponse>(`/cycles/${cycleId}/summary`),
 
+  getIncomingFeedback: (cycleId: number) =>
+    request<import("./types").IncomingFeedbackResponse>(`/cycles/${cycleId}/incoming-feedback`),
+
   createAction: (cycleId: number, body: import("./types").ActionCreate) =>
     request<import("./types").ActionResponse>(`/cycles/${cycleId}/actions`, {
       method: "POST",

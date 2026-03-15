@@ -66,6 +66,9 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
             <Link to="/feedback" className={`${pillClass} text-surface-text-strong`}>
               Feedback
             </Link>
+            <Link to="/incoming-feedback" className={`${pillClass} text-surface-text-strong`}>
+              Incoming feedback
+            </Link>
             {user.role === "admin" && (
               <>
                 <Link to="/admin-controls" className={`${pillClass} text-surface-text-strong`}>

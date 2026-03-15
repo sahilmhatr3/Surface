@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import FeedbackCycle, Rant, StructuredFeedback, User
+from app.models import FeedbackCycle, Rant, RantDirectedSegment, StructuredFeedback, User
 from app.schemas.feedback import (
     RantCreate,
     RantResponse,
@@ -40,6 +40,12 @@ def _team_member_names(db: Session, team_id: int) -> list[str]:
     """Return list of team member names for de-identification."""
     users = db.query(User).filter(User.team_id == team_id).all()
     return [u.name for u in users if u.name]
+
+
+def _teammates_excluding_self(db: Session, team_id: int, exclude_user_id: int) -> list[tuple[str, int]]:
+    """Return (name, user_id) for teammates excluding one user. Used for dissection name->id mapping."""
+    users = db.query(User).filter(User.team_id == team_id, User.id != exclude_user_id).all()
+    return [(u.name, u.id) for u in users if u.name]
 
 
 @router.get("/teammates", response_model=list[TeammateResponse])
@@ -80,12 +86,14 @@ def submit_rant(
             detail="OpenAI API key not configured",
         )
     names = _team_member_names(db, cycle.team_id)
+    raw_text = body.text
     try:
-        anonymized = ai_service.deidentify_text(body.text, names)
+        # Use de-identified text for storage and themes so example comments never contain names.
+        anonymized = ai_service.deidentify_text(raw_text, names)
         theme, sentiment = ai_service.classify_theme_and_sentiment(anonymized)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AI processing failed",
@@ -95,20 +103,51 @@ def submit_rant(
         existing.anonymized_text = anonymized
         existing.theme = theme
         existing.sentiment = sentiment
-        db.commit()
-        db.refresh(existing)
-        return existing
-    rant = Rant(
-        user_id=current_user.id,
-        cycle_id=body.cycle_id,
-        raw_text=None,
-        anonymized_text=anonymized,
-        theme=theme,
-        sentiment=sentiment,
-    )
-    db.add(rant)
+        rant = existing
+    else:
+        rant = Rant(
+            user_id=current_user.id,
+            cycle_id=body.cycle_id,
+            raw_text=None,
+            anonymized_text=anonymized,
+            theme=theme,
+            sentiment=sentiment,
+        )
+        db.add(rant)
     db.commit()
     db.refresh(rant)
+
+    # Directed segments: run in a separate step so the rant is always saved even if this fails
+    # (e.g. rant_directed_segments table missing, or dissection error)
+    teammates_name_id = _teammates_excluding_self(db, cycle.team_id, current_user.id)
+    if teammates_name_id:
+        try:
+            db.query(RantDirectedSegment).filter(RantDirectedSegment.source_rant_id == rant.id).delete(synchronize_session=False)
+            # Use raw text for routing so the model can see names for mapping,
+            # but de-identify each snippet before storing so receivers never see names or verbatim text.
+            segments_data = ai_service.dissect_rant_to_directed_segments(raw_text, [n for n, _ in teammates_name_id])
+            name_to_id = {name: uid for name, uid in teammates_name_id}
+            for seg in segments_data:
+                receiver_id = name_to_id.get(seg["receiver_name"])
+                if receiver_id is None:
+                    continue
+                # De-identify and lightly rewrite the snippet so it becomes a short key phrase/sentence
+                # without any names or sharp identifiers.
+                safe_snippet = ai_service.deidentify_text(seg["snippet"], names)
+                db.add(
+                    RantDirectedSegment(
+                        cycle_id=body.cycle_id,
+                        receiver_id=receiver_id,
+                        snippet=safe_snippet[:300],
+                        theme=seg["theme"],
+                        sentiment=seg["sentiment"],
+                        source_rant_id=rant.id,
+                    )
+                )
+            db.commit()
+        except Exception:
+            db.rollback()
+            # Rant is already saved; segments are best-effort
     return rant
 
 

@@ -133,6 +133,19 @@ export interface CycleSummaryResponse {
   summary_text: string | null;
 }
 
+export interface DirectedRantSegmentItem {
+  snippet: string;
+  theme: string;
+  sentiment: string;
+}
+
+export interface IncomingFeedbackResponse {
+  cycle_id: number;
+  structured: ManagerSummaryResponse | null;
+  directed_rant_segments: DirectedRantSegmentItem[];
+  directed_rant_below_threshold_note: string | null;
+}
+
 export interface ActionCreate {
   theme: string;
   action_text: string;

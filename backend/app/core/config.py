@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     )
 
     # Anonymity (MVP: single threshold)
-    ANONYMITY_THRESHOLD: int = Field(default=5, ge=1, description="Min distinct respondents before showing comments")
+    ANONYMITY_THRESHOLD: int = Field(default=1, ge=1, description="Min distinct respondents before showing comments")
 
     # OpenAI (for rant de-identify and theme/sentiment). Set in .env; required for POST /feedback/rant.
     OPENAI_API_KEY: str | None = Field(default=None, description="OpenAI API key")

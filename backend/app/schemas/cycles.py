@@ -70,3 +70,29 @@ class CycleSummaryResponse(BaseModel):
     themes: list[ThemeItem]
     actions: list[ActionResponse]
     summary_text: str | None = Field(None, description="Summarized anonymized feedback when available.")
+
+
+class DirectedRantSegmentItem(BaseModel):
+    """One anonymized snippet of open feedback directed at the current user."""
+
+    snippet: str
+    theme: str
+    sentiment: str
+
+
+class IncomingFeedbackResponse(BaseModel):
+    """
+    All feedback about the current user for a cycle: structured (scores + comments) and directed rant segments.
+    Both sections apply anonymity threshold; receiver can never infer senders.
+    """
+
+    cycle_id: int
+    structured: ManagerSummaryResponse | None = Field(
+        None,
+        description="Aggregated structured feedback about you (scores + comments). Only present after cycle is aggregated.",
+    )
+    directed_rant_segments: list[DirectedRantSegmentItem] = Field(default_factory=list)
+    directed_rant_below_threshold_note: str | None = Field(
+        None,
+        description="Shown when there are directed open feedback segments but count is below anonymity threshold.",
+    )

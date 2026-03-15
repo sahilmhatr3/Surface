@@ -42,6 +42,8 @@ export default function Feedback() {
   const [rantTags, setRantTags] = useState<string[]>([]);
   const [rantSubmitting, setRantSubmitting] = useState(false);
   const [rantDone, setRantDone] = useState(false);
+  const [rantSavedTheme, setRantSavedTheme] = useState<string | null>(null);
+  const [rantSavedSentiment, setRantSavedSentiment] = useState<string | null>(null);
 
   const [structured, setStructured] = useState<
     Record<
@@ -103,12 +105,15 @@ export default function Feedback() {
   const handleSubmitRant = async () => {
     if (!selectedCycle || !rantText.trim()) return;
     setRantSubmitting(true);
+    setError(null);
     try {
-      await feedbackApi.submitRant({
+      const res = await feedbackApi.submitRant({
         cycle_id: selectedCycle.id,
         text: rantText.trim(),
         tags: rantTags,
       });
+      setRantSavedTheme(res.theme ?? null);
+      setRantSavedSentiment(res.sentiment ?? null);
       setRantDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit rant");
@@ -206,7 +211,18 @@ export default function Feedback() {
               One per cycle. Your text is de-identified and used only for themes; it won’t be shown verbatim.
             </p>
             {rantDone ? (
-              <p className="text-surface-accent-cyan">Rant submitted.</p>
+              <div className="space-y-2">
+                <p className="text-surface-accent-cyan font-medium">Rant saved.</p>
+                {(rantSavedTheme || rantSavedSentiment) && (
+                  <p className="text-sm text-surface-text-muted">
+                    Theme: {rantSavedTheme ?? "—"} · Sentiment: {rantSavedSentiment ?? "—"}
+                  </p>
+                )}
+                <p className="text-sm text-surface-text-muted">
+                  It will appear in cycle themes and summary after the cycle is closed and aggregated.
+                  If you mentioned teammates, relevant snippets may show in their Incoming feedback.
+                </p>
+              </div>
             ) : (
               <>
                 <textarea

@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { adminApi } from "../api/client";
+import { adminApi, cyclesApi } from "../api/client";
 import type {
   UserResponse,
   UserImportRow,
@@ -98,6 +98,7 @@ export default function AdminControls() {
   const [updateCycleSubmitting, setUpdateCycleSubmitting] = useState<number | null>(null);
   const [extendCycleId, setExtendCycleId] = useState<number | null>(null);
   const [extendEndDate, setExtendEndDate] = useState("");
+  const [aggregateCycleSubmitting, setAggregateCycleSubmitting] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -371,6 +372,19 @@ export default function AdminControls() {
     await handleUpdateCycle(selectedTeamId, extendCycleId, undefined, extendEndDate);
     setExtendCycleId(null);
     setExtendEndDate("");
+  };
+
+  const handleAggregateCycle = async (cycleId: number) => {
+    if (!selectedTeamId) return;
+    setAggregateCycleSubmitting(cycleId);
+    try {
+      await cyclesApi.aggregate(cycleId);
+      await adminApi.listTeamCycles(selectedTeamId).then(setCycles);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to aggregate cycle");
+    } finally {
+      setAggregateCycleSubmitting(null);
+    }
   };
 
   const openCreateTeamModal = (rowIndex: number) => {
@@ -938,6 +952,16 @@ export default function AdminControls() {
                                     className={btnClass}
                                   >
                                     Extend end date
+                                  </button>
+                                )}
+                                {c.status === "closed" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAggregateCycle(c.id)}
+                                    disabled={aggregateCycleSubmitting === c.id}
+                                    className={btnClass}
+                                  >
+                                    {aggregateCycleSubmitting === c.id ? "Aggregating…" : "Aggregate"}
                                   </button>
                                 )}
                               </div>

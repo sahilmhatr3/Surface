@@ -84,6 +84,23 @@ class Rant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class RantDirectedSegment(Base):
+    """
+    One piece of open feedback directed at a specific person, extracted from a rant.
+    No giver/sender stored; source_rant_id is set only until aggregation (then SET NULL when rant is deleted).
+    """
+    __tablename__ = "rant_directed_segments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("feedback_cycles.id", ondelete="CASCADE"), nullable=False, index=True)
+    receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    snippet: Mapped[str] = mapped_column(Text, nullable=False)
+    theme: Mapped[str] = mapped_column(String(100), nullable=False)
+    sentiment: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_rant_id: Mapped[int | None] = mapped_column(ForeignKey("rants.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class StructuredFeedback(Base):
     __tablename__ = "structured_feedback"
 

@@ -10,7 +10,7 @@ from app.db import Base
 from app.core.config import settings
 
 # Import all models so Alembic can detect them
-from app.models import User, Team, FeedbackCycle, Rant, StructuredFeedback, CycleInsight, CycleReceiverSummary, Action
+from app.models import User, Team, FeedbackCycle, Rant, RantDirectedSegment, StructuredFeedback, CycleInsight, CycleReceiverSummary, Action
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

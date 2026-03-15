@@ -8,6 +8,7 @@ import Presentation from "./pages/Presentation";
 import Dashboard from "./pages/Dashboard";
 import Teams from "./pages/Teams";
 import Insights from "./pages/Insights";
+import IncomingFeedback from "./pages/IncomingFeedback";
 import AdminControls from "./pages/AdminControls";
 import Feedback from "./pages/Feedback";
 import ChangePassword from "./pages/ChangePassword";
@@ -30,6 +31,7 @@ function App() {
           <Route path="presentation" element={<Presentation />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="feedback" element={<Feedback />} />
+          <Route path="incoming-feedback" element={<IncomingFeedback />} />
           <Route path="admin-controls" element={<AdminControls />} />
           <Route path="teams" element={<Teams />} />
           <Route path="insights" element={<Insights />} />
