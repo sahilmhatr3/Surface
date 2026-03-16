@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import FeedbackCycle, Rant, RantDirectedSegment, StructuredFeedback, User
 from app.schemas.feedback import (
+    MyStructuredFeedbackItem,
     RantCreate,
     RantResponse,
     StructuredFeedbackBatchCreate,
     StructuredFeedbackCreate,
     StructuredFeedbackResponse,
+    StructuredFeedbackScores,
     TeammateResponse,
 )
 from app.core.config import settings
@@ -33,6 +35,16 @@ def _get_open_cycle(db: Session, cycle_id: int, user: User) -> FeedbackCycle:
         )
     if user.team_id != cycle.team_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cycle does not belong to your team")
+    return cycle
+
+
+def _get_cycle_for_team(db: Session, cycle_id: int, user: User) -> FeedbackCycle | None:
+    """Load cycle if it exists and belongs to user's team (any status). Returns None if no team."""
+    if user.team_id is None:
+        return None
+    cycle = db.get(FeedbackCycle, cycle_id)
+    if not cycle or cycle.team_id != user.team_id:
+        return None
     return cycle
 
 
@@ -66,6 +78,38 @@ def get_teammates(
         .all()
     )
     return [TeammateResponse(id=u.id, name=u.name) for u in users]
+
+
+@router.get("/structured", response_model=list[MyStructuredFeedbackItem])
+def get_my_structured_feedback(
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return the current user's saved structured feedback for the given cycle (one per receiver).
+    Used to restore progress when returning to the feedback page. Cycle must belong to user's team.
+    """
+    cycle = _get_cycle_for_team(db, cycle_id, current_user)
+    if not cycle:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cycle not found")
+    rows = (
+        db.query(StructuredFeedback)
+        .filter(
+            StructuredFeedback.cycle_id == cycle_id,
+            StructuredFeedback.giver_id == current_user.id,
+        )
+        .all()
+    )
+    return [
+        MyStructuredFeedbackItem(
+            receiver_id=r.receiver_id,
+            scores=StructuredFeedbackScores(**r.scores),
+            comments_helpful=r.comments_helpful,
+            comments_improvement=r.comments_improvement,
+        )
+        for r in rows
+    ]
 
 
 @router.post("/rant", response_model=RantResponse)

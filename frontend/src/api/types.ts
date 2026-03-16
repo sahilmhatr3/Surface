@@ -191,3 +191,11 @@ export interface StructuredFeedbackBatchCreate {
   cycle_id: number;
   feedback: StructuredFeedbackBatchItem[];
 }
+
+/** One saved structured feedback item (current user's submissions for a cycle). */
+export interface MyStructuredFeedbackItem {
+  receiver_id: number;
+  scores: StructuredFeedbackScores;
+  comments_helpful: string | null;
+  comments_improvement: string | null;
+}

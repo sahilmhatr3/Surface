@@ -72,6 +72,17 @@ class StructuredFeedbackResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MyStructuredFeedbackItem(BaseModel):
+    """One saved structured feedback (for current user's submissions in a cycle)."""
+
+    receiver_id: int
+    scores: StructuredFeedbackScores
+    comments_helpful: str | None = None
+    comments_improvement: str | None = None
+
+    model_config = {"from_attributes": False}
+
+
 class TeammateResponse(BaseModel):
     """Teammate (id, name) for feedback receiver picker. Excludes current user."""
 

@@ -114,10 +114,11 @@ def dissect_rant_to_directed_segments(
                 "content": (
                     "You analyze a team member's feedback message. The message may mention other team members by name. "
                     "Your job: (1) Identify which people from the list are clearly mentioned or referred to. "
-                    "(2) For each such person, output exactly one short snippet that captures the feedback ABOUT THEM. "
-                    "(3) CRITICAL - Anonymity: write each snippet so the receiver can NEVER infer who wrote it. "
-                    "Use neutral, plural, or passive wording only: e.g. 'Feedback suggests...', 'There is a sense that...', "
-                    "'Team members have noted...'. Do NOT use 'I', 'my', 'someone said', or any phrasing that hints at a single author. "
+                    "(2) For each such person, output exactly one reworded key point that captures the feedback ABOUT THEM. "
+                    "CRITICAL: Do NOT quote the message. Express each point entirely in your own words; no verbatim phrasing from the original. "
+                    "One short sentence or key phrase only—the most important point. No overlap or repetition across snippets. "
+                    "(3) Anonymity: write so the receiver can NEVER infer who wrote it. Use neutral, plural, or passive wording only "
+                    "(e.g. 'Feedback suggests...', 'There is a sense that...'). Do NOT use 'I', 'my', or 'someone said'. "
                     "(4) receiver_name must be the EXACT name from the list provided. "
                     "(5) theme: one short label (e.g. communication, workload, support). sentiment: one of negative, neutral, positive. "
                     "Reply with ONLY a JSON array of objects, each with keys: receiver_name, snippet, theme, sentiment. "
@@ -200,3 +201,67 @@ def summarize_feedback_cycle(rant_texts: list[str], structured_snippets: list[st
     )
     out = (resp.choices[0].message.content or "").strip()
     return out
+
+
+def reword_theme_feedback_to_key_points(
+    anonymized_texts: list[str],
+    sentiments: list[str],
+    theme: str,
+    max_points: int = 8,
+) -> list[str]:
+    """
+    Turn many anonymized feedback messages (for one theme) into a short list of reworded key points.
+    No verbatim quotes; no overlap or repetition. Ordered by sentiment strength (most critical first).
+    Used for cycle insights so example_comments are paraphrased, deduplicated, and ranked.
+    """
+    if not anonymized_texts or not settings.OPENAI_API_KEY:
+        return []
+    # Sentiment strength order: negative first, then neutral, then positive
+    order = {"negative": 0, "neutral": 1, "positive": 2}
+    paired = list(zip(anonymized_texts, sentiments))
+    paired.sort(key=lambda p: (order.get(p[1].lower(), 1), 0))
+    texts_in_order = [p[0] for p in paired]
+    sentiments_in_order = [p[1] for p in paired]
+    combined = "\n---\n".join(
+        f"[{s}] {t}" for t, s in zip(texts_in_order[:30], sentiments_in_order[:30])
+    )
+    if len(combined) > 8000:
+        combined = combined[:8000] + "\n[Additional feedback truncated.]"
+    client = _client()
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are given anonymized feedback messages all about the same theme. "
+                    "Your task: produce a short list of the most important key points, entirely in your own words. "
+                    "Rules: (1) Do NOT quote or copy phrasing from the messages. Reword every point completely. "
+                    "(2) No overlapping or repeated ideas—merge similar points into one. "
+                    "(3) Order by sentiment strength: put the most critical or strongest concerns first, then neutral, then positive. "
+                    "(4) Output only a JSON array of strings, each string one key point. No other text. "
+                    f"Maximum {max_points} key points."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Theme: {theme}\n\nFeedback (each line prefixed with sentiment):\n\n{combined}",
+            },
+        ],
+        max_tokens=1024,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```\w*\n?", "", raw)
+        raw = re.sub(r"\n?```\s*$", "", raw)
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, list):
+            return []
+        out = []
+        for i in data:
+            if isinstance(i, str) and i.strip():
+                out.append(i.strip()[:500])
+        return out[:max_points]
+    except (json.JSONDecodeError, TypeError):
+        return []

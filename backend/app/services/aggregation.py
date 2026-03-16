@@ -13,7 +13,7 @@ from app.models import (
     Rant,
     StructuredFeedback,
 )
-from app.services.ai import summarize_feedback_cycle
+from app.services.ai import reword_theme_feedback_to_key_points, summarize_feedback_cycle
 
 
 def run_aggregation(db: Session, cycle_id: int) -> None:
@@ -43,10 +43,10 @@ def run_aggregation(db: Session, cycle_id: int) -> None:
         by_theme[r.theme].append(r)
 
     for theme, theme_rants in by_theme.items():
-        sentiments = [r.sentiment for r in theme_rants]
-        pos = sum(1 for s in sentiments if s == "positive")
-        neg = sum(1 for s in sentiments if s == "negative")
-        neu = sum(1 for s in sentiments if s == "neutral")
+        sentiments_list = [r.sentiment for r in theme_rants]
+        pos = sum(1 for s in sentiments_list if s == "positive")
+        neg = sum(1 for s in sentiments_list if s == "negative")
+        neu = sum(1 for s in sentiments_list if s == "neutral")
         parts = []
         if pos:
             parts.append(f"{pos} positive")
@@ -55,7 +55,13 @@ def run_aggregation(db: Session, cycle_id: int) -> None:
         if neu:
             parts.append(f"{neu} neutral")
         sentiment_summary = ", ".join(parts) if parts else "neutral"
-        example_comments = [r.anonymized_text for r in theme_rants if r.anonymized_text][:20]
+        texts = [r.anonymized_text for r in theme_rants if r.anonymized_text]
+        try:
+            example_comments = reword_theme_feedback_to_key_points(
+                texts, [r.sentiment for r in theme_rants if r.anonymized_text], theme, max_points=8
+            )
+        except Exception:
+            example_comments = []
         insight = CycleInsight(
             cycle_id=cycle_id,
             theme=theme[:100],
