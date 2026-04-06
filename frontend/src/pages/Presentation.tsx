@@ -102,12 +102,14 @@ export default function Presentation() {
                   Cycle #{c.id}
                 </span>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-xs ${
+                  className={`px-2 py-0.5 rounded-full text-xs border ${
                     c.status === "open"
-                      ? "bg-emerald-500/20 text-emerald-400"
-                      : c.status === "aggregated"
-                        ? "bg-surface-accent-cyan/20 text-surface-accent-cyan"
-                        : "bg-surface-text-muted/20 text-surface-text-muted"
+                      ? "bg-white/8 text-surface-text border-white/15"
+                      : c.status === "published"
+                        ? "bg-sky-500/10 text-sky-300/80 border-sky-500/20"
+                        : c.status === "compiled"
+                          ? "bg-violet-500/10 text-violet-300/80 border-violet-500/20"
+                        : "bg-white/5 text-surface-text-muted border-white/10"
                   }`}
                 >
                   {c.status}

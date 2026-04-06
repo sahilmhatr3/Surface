@@ -17,12 +17,15 @@ class RantCreate(BaseModel):
 
 
 class RantResponse(BaseModel):
-    """Rant as returned after submission (no user identity or raw text)."""
+    """
+    Rant as returned after submission (no user identity or raw text).
+    theme/sentiment are None while background AI processing is in flight.
+    """
 
     id: int
     cycle_id: int
-    theme: str
-    sentiment: str
+    theme: str | None = None
+    sentiment: str | None = None
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}

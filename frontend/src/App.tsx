@@ -11,10 +11,6 @@ import Insights from "./pages/Insights";
 import IncomingFeedback from "./pages/IncomingFeedback";
 import AdminControls from "./pages/AdminControls";
 import Feedback from "./pages/Feedback";
-import ChangePassword from "./pages/ChangePassword";
-import ForgotPassword from "./pages/ForgotPassword";
-import ForgotPasswordVerify from "./pages/ForgotPasswordVerify";
-import ForgotPasswordSetPassword from "./pages/ForgotPasswordSetPassword";
 
 function App() {
   return (
@@ -23,10 +19,6 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Landing />} />
           <Route path="login" element={<Login />} />
-          <Route path="forgot-password" element={<ForgotPassword />} />
-          <Route path="forgot-password/verify" element={<ForgotPasswordVerify />} />
-          <Route path="forgot-password/set-password" element={<ForgotPasswordSetPassword />} />
-          <Route path="change-password" element={<ChangePassword />} />
           <Route path="concept" element={<Concept />} />
           <Route path="presentation" element={<Presentation />} />
           <Route path="dashboard" element={<Dashboard />} />

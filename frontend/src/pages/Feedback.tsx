@@ -1,9 +1,10 @@
 /**
- * Employee (and manager) feedback: submit rant + structured feedback for the current open cycle.
- * Sections are collapsible; structured feedback is saveable per person with progress indicator.
+ * Feedback hub — two modes:
+ *   Mode 1 (no ?cycle=)   → cycle list landing with status-aware CTAs
+ *   Mode 2 (?cycle=X)     → cycle detail: submission form (open) or status message
  */
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi, feedbackApi } from "../api/client";
 import type {
@@ -13,6 +14,8 @@ import type {
 } from "../api/types";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
+
+// ─── shared styles ────────────────────────────────────────────────────────────
 
 const cardClass =
   "rounded-2xl bg-surface-card border border-surface-pill-border overflow-hidden";
@@ -28,8 +31,9 @@ const RANT_TAGS = [
   "tools",
   "culture",
   "onboarding",
-  "other",
 ];
+
+// ─── small icons ──────────────────────────────────────────────────────────────
 
 function ChevronDown({ open }: { open: boolean }) {
   return (
@@ -68,6 +72,61 @@ function MinusIcon() {
   );
 }
 
+function BackArrow() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+    </svg>
+  );
+}
+
+// ─── cycle list helpers ───────────────────────────────────────────────────────
+
+function formatDateRange(c: CycleResponse): string {
+  try {
+    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+    const start = new Date(c.start_date).toLocaleDateString("en-US", opts);
+    const end = new Date(c.end_date).toLocaleDateString("en-US", {
+      ...opts,
+      year: "numeric",
+    });
+    return `${start} – ${end}`;
+  } catch {
+    return `Cycle #${c.id}`;
+  }
+}
+
+function StatusBadge({ status, teamPublished, individualsPublished }: {
+  status: string;
+  teamPublished?: boolean;
+  individualsPublished?: boolean;
+}) {
+  let label = status;
+  let cls = "bg-white/5 text-surface-text-muted border-white/10";
+
+  if (status === "open") {
+    label = "Open";
+    cls = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+  } else if (status === "closed") {
+    label = "Closed";
+    cls = "bg-white/5 text-surface-text-muted border-white/10";
+  } else if (status === "compiled") {
+    label = "In review";
+    cls = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  } else if (status === "published" || teamPublished || individualsPublished) {
+    label = "Published";
+    cls = "bg-sky-500/10 text-sky-400 border-sky-500/20";
+  }
+
+  return (
+    <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+// ─── structured feedback types ────────────────────────────────────────────────
+
 type StructuredEntry = {
   support: number;
   communication: number;
@@ -82,38 +141,64 @@ const DEFAULT_STRUCTURED: StructuredEntry = {
   comments_improvement: "",
 };
 
+// ─── component ────────────────────────────────────────────────────────────────
+
 export default function Feedback() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlCycleId = searchParams.get("cycle")
+    ? parseInt(searchParams.get("cycle")!, 10)
+    : null;
+
   const [cycles, setCycles] = useState<CycleResponse[]>([]);
   const [teammates, setTeammates] = useState<TeammateResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // rant state
   const [rantText, setRantText] = useState("");
   const [rantTags, setRantTags] = useState<string[]>([]);
   const [rantSubmitting, setRantSubmitting] = useState(false);
   const [rantDone, setRantDone] = useState(false);
-  const [rantSavedTheme, setRantSavedTheme] = useState<string | null>(null);
-  const [rantSavedSentiment, setRantSavedSentiment] = useState<string | null>(null);
 
+  // structured state
   const [structured, setStructured] = useState<Record<number, StructuredEntry>>({});
   const [structuredSavingId, setStructuredSavingId] = useState<number | null>(null);
   const [savedStructuredReceivers, setSavedStructuredReceivers] = useState<Set<number>>(new Set());
   const [lastSavedStructured, setLastSavedStructured] = useState<Record<number, StructuredEntry>>({});
   const [structuredCollapsedIds, setStructuredCollapsedIds] = useState<Set<number>>(new Set());
 
+  // custom tag state
+  const [customTagInput, setCustomTagInput] = useState("");
+  const [showCustomTagInput, setShowCustomTagInput] = useState(false);
+
+  // section open/close
   const [rantSectionOpen, setRantSectionOpen] = useState(false);
   const [structuredSectionOpen, setStructuredSectionOpen] = useState(false);
 
-  const openCycles = cycles.filter((c) => c.status === "open");
-  const selectedCycle = openCycles[0] ?? null;
+  const isManagerOrAdmin = user?.role === "manager" || user?.role === "admin";
 
-  const load = useCallback(() => {
+  // Resolve the cycle for the detail view
+  const selectedCycle = urlCycleId
+    ? cycles.find((c) => c.id === urlCycleId) ?? null
+    : null;
+  const cycleOpen = selectedCycle?.status === "open";
+
+  // ─── load data ──────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate("/login");
+      return;
+    }
+    if (!user) return;
+
     setError(null);
     setLoading(true);
+
     Promise.all([cyclesApi.listCycles(), feedbackApi.getTeammates()])
-      .then(([c, t]) => {
+      .then(async ([c, t]) => {
         setCycles(c);
         setTeammates(t);
         setStructured((prev) => {
@@ -129,12 +214,17 @@ export default function Feedback() {
           });
           return next;
         });
-        const firstOpen = c.find((cy) => cy.status === "open");
-        if (!firstOpen) return Promise.resolve([]);
-        return feedbackApi.getMyStructuredFeedback(firstOpen.id);
-      })
-      .then((savedList) => {
+
+        // Load saved structured feedback only when viewing an open cycle detail
+        if (!urlCycleId) return;
+        const targetCycle = c.find(
+          (cy) => cy.id === urlCycleId && cy.status === "open"
+        );
+        if (!targetCycle) return;
+
+        const savedList = await feedbackApi.getMyStructuredFeedback(targetCycle.id);
         if (!savedList?.length) return;
+
         const entries: Record<number, StructuredEntry> = {};
         savedList.forEach((item) => {
           entries[item.receiver_id] = {
@@ -150,16 +240,9 @@ export default function Feedback() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user, authLoading, navigate, urlCycleId]);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/login");
-      return;
-    }
-    if (!user) return;
-    load();
-  }, [user, authLoading, navigate, load]);
+  // ─── handlers ───────────────────────────────────────────────────────────────
 
   const toggleTag = (tag: string) => {
     setRantTags((prev) =>
@@ -167,18 +250,25 @@ export default function Feedback() {
     );
   };
 
+  const addCustomTag = () => {
+    const tag = customTagInput.trim().toLowerCase();
+    if (tag && !rantTags.includes(tag)) {
+      setRantTags((prev) => [...prev, tag]);
+    }
+    setCustomTagInput("");
+    setShowCustomTagInput(false);
+  };
+
   const handleSubmitRant = async () => {
     if (!selectedCycle || !rantText.trim()) return;
     setRantSubmitting(true);
     setError(null);
     try {
-      const res = await feedbackApi.submitRant({
+      await feedbackApi.submitRant({
         cycle_id: selectedCycle.id,
         text: rantText.trim(),
         tags: rantTags,
       });
-      setRantSavedTheme(res.theme ?? null);
-      setRantSavedSentiment(res.sentiment ?? null);
       setRantDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit rant");
@@ -227,11 +317,6 @@ export default function Feedback() {
     });
   };
 
-  const structuredSavedCount = savedStructuredReceivers.size;
-  const structuredTotalCount = teammates.length;
-  const structuredAllDone = structuredTotalCount > 0 && structuredSavedCount === structuredTotalCount;
-  const cycleOpen = selectedCycle?.status === "open";
-
   const hasStructuredChanges = (teammateId: number): boolean => {
     const current = structured[teammateId] ?? DEFAULT_STRUCTURED;
     const baseline = lastSavedStructured[teammateId] ?? DEFAULT_STRUCTURED;
@@ -251,27 +336,154 @@ export default function Feedback() {
     setStructured((prev) => ({
       ...prev,
       [teammateId]: {
-        ...(prev[teammateId] ?? {
-          support: 3,
-          communication: 3,
-          comments_helpful: "",
-          comments_improvement: "",
-        }),
+        ...(prev[teammateId] ?? DEFAULT_STRUCTURED),
         [field]: value,
       },
     }));
   };
 
+  const structuredSavedCount = savedStructuredReceivers.size;
+  const structuredTotalCount = teammates.length;
+  const structuredAllDone =
+    structuredTotalCount > 0 && structuredSavedCount === structuredTotalCount;
+
+  // ─── render guards ───────────────────────────────────────────────────────────
+
   if (authLoading || !user) return null;
 
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-20 flex justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODE 1 — Cycle list landing
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  if (!urlCycleId) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-surface-text-strong tracking-tight">
+            Feedback
+          </h1>
+          <p className="text-sm text-surface-text-muted mt-1">
+            Your feedback history and open cycles. Select one to get started or view results.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-6">
+            <ErrorMessage message={error} onRetry={() => setError(null)} />
+          </div>
+        )}
+
+        {!user.team_id ? (
+          <p className="text-surface-text-muted text-sm">
+            You&apos;re not in a team yet. Ask an admin to assign you to a team.
+          </p>
+        ) : cycles.length === 0 ? (
+          <p className="text-surface-text-muted text-sm">
+            No feedback cycles yet. Ask your admin to create one.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {cycles.map((c) => {
+              const isOpen = c.status === "open";
+              const isClosed = c.status === "closed";
+              const isCompiled = c.status === "compiled";
+              const isPublished =
+                c.status === "published" || c.team_published || c.individuals_published;
+
+              return (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between gap-4 border border-surface-pill-border rounded-2xl px-5 py-4 bg-surface-card hover:border-white/[0.18] transition-colors"
+                >
+                  {/* Left: cycle info */}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-surface-text-strong">
+                      Cycle #{c.id}
+                    </p>
+                    <p className="text-xs text-surface-text-muted mt-0.5">
+                      {formatDateRange(c)}
+                    </p>
+                  </div>
+
+                  {/* Right: status + actions */}
+                  <div className="flex items-center gap-2.5 shrink-0 flex-wrap justify-end">
+                    <StatusBadge
+                      status={c.status}
+                      teamPublished={c.team_published}
+                      individualsPublished={c.individuals_published}
+                    />
+
+                    {isOpen && (
+                      <Link
+                        to={`/feedback?cycle=${c.id}`}
+                        className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
+                      >
+                        Give feedback
+                      </Link>
+                    )}
+
+                    {isClosed && (
+                      <span className="text-xs text-surface-text-muted px-2">
+                        Awaiting compilation
+                      </span>
+                    )}
+
+                    {isCompiled && isManagerOrAdmin && (
+                      <Link
+                        to={`/insights?cycle=${c.id}`}
+                        className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
+                      >
+                        Review pending
+                      </Link>
+                    )}
+
+                    {isCompiled && !isManagerOrAdmin && (
+                      <span className="text-xs text-surface-text-muted px-2">
+                        Under review
+                      </span>
+                    )}
+
+                    {isPublished && (
+                      <Link
+                        to={`/insights?cycle=${c.id}`}
+                        className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
+                      >
+                        View insights
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODE 2 — Cycle detail view
+  // ═══════════════════════════════════════════════════════════════════════════
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-      <h1 className="text-3xl sm:text-4xl font-bold text-surface-text-strong tracking-tight mb-2">
-        Submit feedback
-      </h1>
-      <p className="text-surface-text-muted mb-10">
-        Anonymous rant and structured feedback for your team. Only open cycles accept submissions.
-      </p>
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+
+      {/* Back link */}
+      <Link
+        to="/feedback"
+        className="inline-flex items-center gap-1.5 text-sm text-surface-text-muted hover:text-surface-text transition-colors mb-8"
+      >
+        <BackArrow />
+        All cycles
+      </Link>
 
       {error && (
         <div className="mb-6">
@@ -279,268 +491,510 @@ export default function Feedback() {
         </div>
       )}
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <LoadingSpinner />
-        </div>
-      ) : !user.team_id ? (
-        <div className={cardClass}>
-          <p className="text-surface-text-muted">
-            You’re not in a team yet. Ask an admin to assign you to a team.
+      {/* Cycle not found */}
+      {!selectedCycle && !loading && (
+        <div className={`${cardClass} p-6`}>
+          <p className="text-surface-text-muted text-sm">
+            Cycle not found. It may have been removed or you may not have access.
           </p>
         </div>
-      ) : openCycles.length === 0 ? (
-        <div className={cardClass}>
-          <p className="text-surface-text-muted">
-            No open feedback cycle right now. Check back later or ask your admin.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {/* Rant — collapsible */}
-          <section className={cardClass}>
-            <button
-              type="button"
-              onClick={() => setRantSectionOpen((o) => !o)}
-              className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-white/[0.02] transition-colors"
-            >
-              <div>
-                <h2 className="text-xl font-semibold text-surface-text-strong">
-                  Anonymous rant
-                </h2>
-                <p className="text-sm text-surface-text-muted mt-0.5">
-                  {rantDone ? "Saved · theme and sentiment recorded" : "One per cycle; de-identified for themes."}
-                </p>
-              </div>
-              <ChevronDown open={rantSectionOpen} />
-            </button>
-            {rantSectionOpen && (
-              <div className="px-6 pb-6 pt-0 border-t border-surface-pill-border">
-                {rantDone ? (
-                  <div className="space-y-2 pt-4">
-                    <p className="text-surface-accent-cyan font-medium">Rant saved.</p>
-                    {(rantSavedTheme || rantSavedSentiment) && (
-                      <p className="text-sm text-surface-text-muted">
-                        Theme: {rantSavedTheme ?? "—"} · Sentiment: {rantSavedSentiment ?? "—"}
-                      </p>
-                    )}
-                    <p className="text-sm text-surface-text-muted">
-                      It will appear in cycle themes and summary after the cycle is closed and aggregated.
-                      If you mentioned teammates, relevant snippets may show in their Incoming feedback.
+      )}
+
+      {/* ── Open cycle: submission form ── */}
+      {selectedCycle && selectedCycle.status === "open" && (
+        <>
+          {/* Page header */}
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-surface-text-strong tracking-tight">
+              Submit feedback
+            </h1>
+            <p className="text-sm text-surface-text-muted mt-1">
+              Cycle #{selectedCycle.id} &middot; {formatDateRange(selectedCycle)}
+            </p>
+          </div>
+
+          {!user.team_id ? (
+            <p className="text-surface-text-muted text-sm">
+              You&apos;re not in a team yet. Ask an admin to assign you to a team.
+            </p>
+          ) : (
+            <div className="space-y-4">
+
+              {/* ── Rant — collapsible ── */}
+              <section className={cardClass}>
+                <button
+                  type="button"
+                  onClick={() => setRantSectionOpen((o) => !o)}
+                  className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-white/[0.02] transition-colors"
+                >
+                  <div>
+                    <h2 className="text-xl font-semibold text-surface-text-strong">
+                      Anonymous rant
+                    </h2>
+                    <p className="text-sm text-surface-text-muted mt-0.5">
+                      {rantDone
+                        ? "Submitted"
+                        : "Use this space to say what you really think about work; your words are anonymized and never traceable back to you"}
                     </p>
                   </div>
-                ) : (
-                  <>
-                    <textarea
-                      placeholder="Share your thoughts..."
-                      value={rantText}
-                      onChange={(e) => setRantText(e.target.value)}
-                      className={`${inputClass} min-h-[120px] resize-y`}
-                      maxLength={10000}
-                    />
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {RANT_TAGS.map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => toggleTag(tag)}
-                          className={`px-3 py-1 rounded-full text-sm border transition-all ${
-                            rantTags.includes(tag)
-                              ? "border-surface-accent-cyan bg-surface-accent-cyan/20 text-surface-text-strong"
-                              : "border-surface-pill-border text-surface-text-muted hover:border-white/30"
-                          }`}
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSubmitRant}
-                      disabled={rantSubmitting || !rantText.trim()}
-                      className={`${btnClass} mt-4`}
-                    >
-                      {rantSubmitting ? "Submitting…" : "Submit rant"}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
+                  <ChevronDown open={rantSectionOpen} />
+                </button>
 
-          {/* Structured feedback — collapsible, progress dots, save per person */}
-          <section className={cardClass}>
-            <button
-              type="button"
-              onClick={() => setStructuredSectionOpen((o) => !o)}
-              className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-white/[0.02] transition-colors"
-            >
-              <div>
-                <h2 className="text-xl font-semibold text-surface-text-strong">
-                  Structured feedback
-                </h2>
-                <p className="text-sm text-surface-text-muted mt-0.5">
-                  {structuredAllDone
-                    ? "All done"
-                    : teammates.length === 0
-                      ? "No teammates yet"
-                      : `Rate each teammate (1–5) and save per person. ${structuredSavedCount}/${structuredTotalCount} saved.`}
-                </p>
-              </div>
-              <ChevronDown open={structuredSectionOpen} />
-            </button>
-            {structuredSectionOpen && (
-              <div className="px-6 pb-6 pt-0 border-t border-surface-pill-border">
-                {teammates.length === 0 ? (
-                  <p className="text-surface-text-muted text-sm pt-4">
-                    No other team members in your team yet.
-                  </p>
-                ) : (
-                  <>
-                    {/* Vertical progress: dots + connecting line along the left */}
-                    <div className="flex gap-4 mt-4">
-                      <div
-                        className="flex flex-col items-center shrink-0 pt-1"
-                        aria-label={`Progress ${structuredSavedCount} of ${structuredTotalCount}`}
-                      >
-                        {teammates.map((t, i) => (
-                          <div key={t.id} className="flex flex-col items-center">
-                            <div
-                              className={`w-3 h-3 rounded-full border-2 transition-all shrink-0 ${
-                                savedStructuredReceivers.has(t.id)
-                                  ? "bg-surface-accent-cyan border-surface-accent-cyan"
-                                  : "border-surface-pill-border bg-transparent"
-                              }`}
-                              title={savedStructuredReceivers.has(t.id) ? `Saved: ${t.name}` : t.name}
-                            />
-                            {i < teammates.length - 1 && (
-                              <div
-                                className={`w-0.5 h-6 min-h-[24px] ${
-                                  savedStructuredReceivers.has(t.id) ? "bg-surface-accent-cyan/60" : "bg-surface-pill-border/50"
-                                }`}
-                              />
-                            )}
-                          </div>
-                        ))}
+                {rantSectionOpen && (
+                  <div className="px-6 pb-6 pt-0 border-t border-surface-pill-border">
+                    {rantDone ? (
+                      <div className="space-y-2 pt-4">
+                        <p className="text-surface-text-strong font-medium">
+                          Feedback submitted.
+                        </p>
+                        <p className="text-sm text-surface-text-muted">
+                          Your response has been recorded. It will be processed and appear in cycle
+                          themes and the compiled summary after the cycle closes. If you mentioned
+                          teammates, relevant snippets may appear in their incoming feedback.
+                        </p>
                       </div>
-                      <div className="flex-1 min-w-0 space-y-3">
-                        {teammates.map((t) => {
-                          const saved = savedStructuredReceivers.has(t.id);
-                          const collapsed = structuredCollapsedIds.has(t.id);
-                          const s = structured[t.id];
-                          return (
-                            <div
-                              key={t.id}
-                              className={`border rounded-xl overflow-hidden transition-all ${
-                                saved ? "border-surface-accent-cyan/40 bg-surface-accent-cyan/5" : "border-surface-pill-border"
+                    ) : (
+                      <>
+                        <p className="mt-4 text-sm text-surface-text-muted" />
+                        <textarea
+                          placeholder="Share what's really on your mind at work"
+                          value={rantText}
+                          onChange={(e) => setRantText(e.target.value)}
+                          className={`${inputClass} min-h-[120px] resize-y mt-3`}
+                          maxLength={10000}
+                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {/* Preset tags */}
+                          {RANT_TAGS.map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => toggleTag(tag)}
+                              className={`px-3 py-1 rounded-full text-sm border transition-all ${
+                                rantTags.includes(tag)
+                                  ? "border-surface-accent-cyan bg-surface-accent-cyan/20 text-surface-text-strong"
+                                  : "border-surface-pill-border text-surface-text-muted hover:border-white/30"
                               }`}
                             >
-                              {saved && collapsed ? (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleStructuredCardCollapse(t.id)}
-                                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5"
-                                >
-                                  <span className="flex items-center justify-center w-7 h-7 rounded-full bg-surface-accent-cyan/20 text-surface-accent-cyan shrink-0">
-                                    <CheckIcon />
-                                  </span>
-                                  <span className="font-medium text-surface-text-strong">{t.name}</span>
-                                  <span className="text-sm text-surface-text-muted">
-                                    Support {s?.support ?? "—"}, Communication {s?.communication ?? "—"}
-                                  </span>
-                                </button>
-                              ) : (
-                                <>
-                                  <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-surface-pill-border/50">
-                                    <span className="font-medium text-surface-text-strong">{t.name}</span>
-                                    {saved && (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleStructuredCardCollapse(t.id)}
-                                        className="p-1 text-surface-text-muted hover:text-surface-accent-cyan"
-                                        aria-label={collapsed ? "Expand" : "Collapse"}
-                                      >
-                                        {collapsed ? <PlusIcon /> : <MinusIcon />}
-                                      </button>
-                                    )}
-                                  </div>
-                                  <div className="p-4 space-y-3">
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div>
-                                        <label className="block text-xs text-surface-text-muted mb-1">Support (1–5)</label>
-                                        <select
-                                          value={s?.support ?? 3}
-                                          onChange={(e) => updateStructured(t.id, "support", parseInt(e.target.value, 10))}
-                                          className={inputClass}
-                                          disabled={!cycleOpen}
-                                        >
-                                          {[1, 2, 3, 4, 5].map((n) => (
-                                            <option key={n} value={n}>{n}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div>
-                                        <label className="block text-xs text-surface-text-muted mb-1">Communication (1–5)</label>
-                                        <select
-                                          value={s?.communication ?? 3}
-                                          onChange={(e) => updateStructured(t.id, "communication", parseInt(e.target.value, 10))}
-                                          className={inputClass}
-                                          disabled={!cycleOpen}
-                                        >
-                                          {[1, 2, 3, 4, 5].map((n) => (
-                                            <option key={n} value={n}>{n}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <label className="block text-xs text-surface-text-muted mb-1">What helped? (optional)</label>
-                                      <textarea
-                                        placeholder="What did this person do well?"
-                                        value={s?.comments_helpful ?? ""}
-                                        onChange={(e) => updateStructured(t.id, "comments_helpful", e.target.value)}
-                                        className={`${inputClass} min-h-[60px] resize-y`}
-                                        maxLength={2000}
-                                        disabled={!cycleOpen}
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-xs text-surface-text-muted mb-1">What could improve? (optional)</label>
-                                      <textarea
-                                        placeholder="Suggestions for improvement"
-                                        value={s?.comments_improvement ?? ""}
-                                        onChange={(e) => updateStructured(t.id, "comments_improvement", e.target.value)}
-                                        className={`${inputClass} min-h-[60px] resize-y`}
-                                        maxLength={2000}
-                                        disabled={!cycleOpen}
-                                      />
-                                    </div>
-                                    {cycleOpen && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSaveStructuredForPerson(t.id)}
-                                        disabled={structuredSavingId === t.id || !hasStructuredChanges(t.id)}
-                                        className={`${btnClass} inline-flex items-center gap-2`}
-                                      >
-                                        {structuredSavingId === t.id ? "Saving…" : "Save"}
-                                      </button>
-                                    )}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {structuredAllDone && (
-                      <p className="text-surface-accent-cyan text-sm mt-4">All structured feedback saved.</p>
+                              {tag}
+                            </button>
+                          ))}
+                          {/* Custom tags already added */}
+                          {rantTags.filter((t) => !RANT_TAGS.includes(t)).map((tag) => (
+                            <span
+                              key={tag}
+                              className="flex items-center gap-1 px-3 py-1 rounded-full text-sm border border-surface-accent-cyan bg-surface-accent-cyan/20 text-surface-text-strong"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRantTags((prev) => prev.filter((t) => t !== tag))
+                                }
+                                className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none"
+                                aria-label={`Remove tag ${tag}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                          {/* Custom tag input */}
+                          {showCustomTagInput ? (
+                            <input
+                              autoFocus
+                              type="text"
+                              value={customTagInput}
+                              onChange={(e) => setCustomTagInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  addCustomTag();
+                                }
+                                if (e.key === "Escape") {
+                                  setShowCustomTagInput(false);
+                                  setCustomTagInput("");
+                                }
+                              }}
+                              onBlur={addCustomTag}
+                              placeholder="Tag name"
+                              maxLength={30}
+                              className="px-3 py-1 rounded-full text-sm border border-surface-accent-cyan/50 bg-white/5 text-surface-text placeholder-surface-text-muted/50 focus:outline-none focus:border-surface-accent-cyan w-28"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomTagInput(true)}
+                              title="Add custom tag"
+                              className="w-7 h-7 flex items-center justify-center rounded-full border border-surface-pill-border text-surface-text-muted hover:border-white/30 hover:text-surface-text transition-all"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2.5}
+                                  d="M12 4v16m8-8H4"
+                                />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleSubmitRant}
+                          disabled={rantSubmitting || !rantText.trim()}
+                          className={`${btnClass} mt-4`}
+                        >
+                          {rantSubmitting ? "Submitting…" : "Submit rant"}
+                        </button>
+                      </>
                     )}
-                  </>
+                  </div>
                 )}
-              </div>
-            )}
-          </section>
+              </section>
+
+              {/* ── Structured feedback — collapsible, progress dots, save per person ── */}
+              <section className={cardClass}>
+                <button
+                  type="button"
+                  onClick={() => setStructuredSectionOpen((o) => !o)}
+                  className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-white/[0.02] transition-colors"
+                >
+                  <div>
+                    <h2 className="text-xl font-semibold text-surface-text-strong">
+                      Structured feedback
+                    </h2>
+                    <p className="text-sm text-surface-text-muted mt-0.5">
+                      {structuredAllDone
+                        ? "All done"
+                        : teammates.length === 0
+                          ? "No teammates yet"
+                          : `Rate each teammate (1–5) and save per person. ${structuredSavedCount}/${structuredTotalCount} saved.`}
+                    </p>
+                  </div>
+                  <ChevronDown open={structuredSectionOpen} />
+                </button>
+
+                {structuredSectionOpen && (
+                  <div className="px-6 pb-6 pt-0 border-t border-surface-pill-border">
+                    {teammates.length === 0 ? (
+                      <p className="text-surface-text-muted text-sm pt-4">
+                        No other team members in your team yet.
+                      </p>
+                    ) : (
+                      <>
+                        {/* Vertical progress: dots + connecting line along the left */}
+                        <div className="flex gap-4 mt-4">
+                          <div
+                            className="flex flex-col items-center shrink-0 pt-1"
+                            aria-label={`Progress ${structuredSavedCount} of ${structuredTotalCount}`}
+                          >
+                            {teammates.map((t, i) => (
+                              <div key={t.id} className="flex flex-col items-center">
+                                <div
+                                  className={`w-3 h-3 rounded-full border-2 transition-all shrink-0 ${
+                                    savedStructuredReceivers.has(t.id)
+                                      ? "bg-surface-accent-cyan border-surface-accent-cyan"
+                                      : "border-surface-pill-border bg-transparent"
+                                  }`}
+                                  title={
+                                    savedStructuredReceivers.has(t.id)
+                                      ? `Saved: ${t.name}`
+                                      : t.name
+                                  }
+                                />
+                                {i < teammates.length - 1 && (
+                                  <div
+                                    className={`w-0.5 h-6 min-h-[24px] ${
+                                      savedStructuredReceivers.has(t.id)
+                                        ? "bg-surface-accent-cyan/60"
+                                        : "bg-surface-pill-border/50"
+                                    }`}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex-1 min-w-0 space-y-3">
+                            {teammates.map((t) => {
+                              const saved = savedStructuredReceivers.has(t.id);
+                              const collapsed = structuredCollapsedIds.has(t.id);
+                              const s = structured[t.id];
+                              return (
+                                <div
+                                  key={t.id}
+                                  className={`border rounded-xl overflow-hidden transition-all ${
+                                    saved
+                                      ? "border-surface-accent-cyan/40 bg-surface-accent-cyan/5"
+                                      : "border-surface-pill-border"
+                                  }`}
+                                >
+                                  {saved && collapsed ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleStructuredCardCollapse(t.id)}
+                                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5"
+                                    >
+                                      <span className="flex items-center justify-center w-7 h-7 rounded-full bg-surface-accent-cyan/20 text-surface-accent-cyan shrink-0">
+                                        <CheckIcon />
+                                      </span>
+                                      <span className="font-medium text-surface-text-strong">
+                                        {t.name}
+                                      </span>
+                                      <span className="text-sm text-surface-text-muted">
+                                        Support {s?.support ?? "—"}, Communication{" "}
+                                        {s?.communication ?? "—"}
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <>
+                                      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-surface-pill-border/50">
+                                        <span className="font-medium text-surface-text-strong">
+                                          {t.name}
+                                        </span>
+                                        {saved && (
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleStructuredCardCollapse(t.id)}
+                                            className="p-1 text-surface-text-muted hover:text-surface-accent-cyan"
+                                            aria-label={collapsed ? "Expand" : "Collapse"}
+                                          >
+                                            {collapsed ? <PlusIcon /> : <MinusIcon />}
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="p-4 space-y-3">
+                                        <div className="grid grid-cols-2 gap-4">
+                                          <div>
+                                            <label className="block text-xs text-surface-text-muted mb-1">
+                                              Support (1–5)
+                                            </label>
+                                            <select
+                                              value={s?.support ?? 3}
+                                              onChange={(e) =>
+                                                updateStructured(
+                                                  t.id,
+                                                  "support",
+                                                  parseInt(e.target.value, 10)
+                                                )
+                                              }
+                                              className={inputClass}
+                                              disabled={!cycleOpen}
+                                            >
+                                              {[1, 2, 3, 4, 5].map((n) => (
+                                                <option key={n} value={n}>
+                                                  {n}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs text-surface-text-muted mb-1">
+                                              Communication (1–5)
+                                            </label>
+                                            <select
+                                              value={s?.communication ?? 3}
+                                              onChange={(e) =>
+                                                updateStructured(
+                                                  t.id,
+                                                  "communication",
+                                                  parseInt(e.target.value, 10)
+                                                )
+                                              }
+                                              className={inputClass}
+                                              disabled={!cycleOpen}
+                                            >
+                                              {[1, 2, 3, 4, 5].map((n) => (
+                                                <option key={n} value={n}>
+                                                  {n}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs text-surface-text-muted mb-1">
+                                            What helped?
+                                          </label>
+                                          <textarea
+                                            placeholder="What did this person do well?"
+                                            value={s?.comments_helpful ?? ""}
+                                            onChange={(e) =>
+                                              updateStructured(
+                                                t.id,
+                                                "comments_helpful",
+                                                e.target.value
+                                              )
+                                            }
+                                            className={`${inputClass} min-h-[60px] resize-y`}
+                                            maxLength={2000}
+                                            disabled={!cycleOpen}
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-xs text-surface-text-muted mb-1">
+                                            What could improve?
+                                          </label>
+                                          <textarea
+                                            placeholder="Suggestions for improvement"
+                                            value={s?.comments_improvement ?? ""}
+                                            onChange={(e) =>
+                                              updateStructured(
+                                                t.id,
+                                                "comments_improvement",
+                                                e.target.value
+                                              )
+                                            }
+                                            className={`${inputClass} min-h-[60px] resize-y`}
+                                            maxLength={2000}
+                                            disabled={!cycleOpen}
+                                          />
+                                        </div>
+                                        {cycleOpen && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleSaveStructuredForPerson(t.id)
+                                            }
+                                            disabled={
+                                              structuredSavingId === t.id ||
+                                              !hasStructuredChanges(t.id)
+                                            }
+                                            className={`${btnClass} inline-flex items-center gap-2`}
+                                          >
+                                            {structuredSavingId === t.id
+                                              ? "Saving…"
+                                              : "Save"}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {structuredAllDone && (
+                          <p className="text-surface-accent-cyan text-sm mt-4">
+                            All structured feedback saved.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Closed cycle ── */}
+      {selectedCycle && selectedCycle.status === "closed" && (
+        <div className="flex flex-col items-center text-center py-20 gap-4">
+          <div className="w-12 h-12 rounded-full bg-white/5 border border-surface-pill-border flex items-center justify-center">
+            <svg
+              className="w-5 h-5 text-surface-text-muted"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
+            </svg>
+          </div>
+          <div>
+            <p className="font-medium text-surface-text-strong">This cycle has ended</p>
+            <p className="text-sm text-surface-text-muted mt-1 max-w-sm">
+              Submissions are closed. Results will be available once your manager compiles
+              and publishes the feedback.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Compiled cycle (awaiting manager review) ── */}
+      {selectedCycle && selectedCycle.status === "compiled" && (
+        <div className="flex flex-col items-center text-center py-20 gap-4">
+          <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <svg
+              className="w-5 h-5 text-amber-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div>
+            <p className="font-medium text-surface-text-strong">
+              {isManagerOrAdmin ? "Ready for your review" : "Feedback is being reviewed"}
+            </p>
+            <p className="text-sm text-surface-text-muted mt-1 max-w-sm">
+              {isManagerOrAdmin
+                ? "The compiled results are ready. Head to the insights panel to review and publish."
+                : "Your manager is reviewing the compiled feedback. Results will be published soon."}
+            </p>
+          </div>
+          {isManagerOrAdmin && (
+            <Link
+              to={`/insights?cycle=${selectedCycle.id}`}
+              className="mt-2 px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
+            >
+              Go to review panel
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* ── Published cycle ── */}
+      {selectedCycle &&
+        (selectedCycle.status === "published" ||
+          selectedCycle.team_published ||
+          selectedCycle.individuals_published) && (
+        <div className="flex flex-col items-center text-center py-20 gap-4">
+          <div className="w-12 h-12 rounded-full bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+            <svg
+              className="w-5 h-5 text-sky-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div>
+            <p className="font-medium text-surface-text-strong">Results are available</p>
+            <p className="text-sm text-surface-text-muted mt-1 max-w-sm">
+              Your manager has published the feedback for this cycle.
+            </p>
+          </div>
+          <Link
+            to={`/insights?cycle=${selectedCycle.id}`}
+            className="mt-2 px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
+          >
+            View insights
+          </Link>
         </div>
       )}
     </div>

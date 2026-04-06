@@ -188,11 +188,12 @@ def summarize_feedback_cycle(rant_texts: list[str], structured_snippets: list[st
             {
                 "role": "system",
                 "content": (
-                    "Summarize the following anonymized feedback from a single feedback cycle. "
-                    "Write a concise, actionable summary in 2-4 paragraphs. Cover: main themes or patterns, "
-                    "overall sentiment, and 1-3 suggested focus areas for the team. "
-                    "Do not identify individuals or single out any comment. Use neutral, professional tone. "
-                    "Output only the summary text, no headings or bullet lists unless they aid clarity."
+                    "You are compiling anonymized feedback from a single team cycle for manager action planning. "
+                    "Write a concise and useful synthesis in 3 short sections with headings exactly: "
+                    "'What is working', 'What is not working', 'Top priorities next cycle'. "
+                    "Use bullet points and merge repeated ideas across messages. "
+                    "Do not quote comments verbatim and do not use informal language. "
+                    "Do not identify individuals."
                 ),
             },
             {"role": "user", "content": compiled},
@@ -201,6 +202,88 @@ def summarize_feedback_cycle(rant_texts: list[str], structured_snippets: list[st
     )
     out = (resp.choices[0].message.content or "").strip()
     return out
+
+
+def generate_cycle_actions(
+    summary_text: str,
+    themes: list[dict],
+    receiver_summaries: list[dict],
+) -> list[dict]:
+    """
+    Generate suggested actions from compiled cycle data.
+    themes: list of {theme, sentiment, count}
+    receiver_summaries: list of {name, average_scores}  (already anonymized names from team)
+    Returns list of {action_text, scope ("team"|"individual"), receiver_name (str|None), theme (str|None)}
+    """
+    if not settings.OPENAI_API_KEY:
+        return []
+
+    themes_text = "\n".join(
+        f"- {t['theme']} (sentiment: {t['sentiment']}, frequency: {t['count']})"
+        for t in themes
+    ) or "No themes available."
+
+    receivers_text = "\n".join(
+        f"- {r['name']}: " + ", ".join(f"{k}={v:.1f}" for k, v in (r.get("average_scores") or {}).items())
+        for r in receiver_summaries
+    ) or "No individual data available."
+
+    client = _client()
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are an organizational development advisor analyzing team feedback from a completed cycle. "
+                    "Generate a practical set of next-step actions for the manager to publish.\n\n"
+                    "Return ONLY a JSON object: {\"actions\": [...]} where each action has:\n"
+                    "  - action_text: specific, professional, 1-2 sentence action (no generic platitudes)\n"
+                    "  - scope: \"team\" or \"individual\"\n"
+                    "  - receiver_name: exact name string if individual, null if team\n"
+                    "  - theme: 1-3 word lowercase theme tag, or null\n\n"
+                    "Rules:\n"
+                    "- Generate 3-5 team-level actions targeting the highest-impact themes\n"
+                    "- Generate individual actions only for people with notably low scores (below 2.5 average) "
+                    "or clear patterns in the data — at most 1 per person\n"
+                    "- Individual actions must be growth-focused and constructive, never punitive\n"
+                    "- Do not quote specific feedback or make it traceable to any respondent\n"
+                    "- receiver_name must match exactly one of the names in the individual data provided"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"## Cycle summary\n{summary_text or 'Not available.'}\n\n"
+                    f"## Team themes\n{themes_text}\n\n"
+                    f"## Individual averages (scores 1-5)\n{receivers_text}"
+                ),
+            },
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=1024,
+        temperature=0.35,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    try:
+        data = json.loads(raw)
+        items = data.get("actions", []) if isinstance(data, dict) else data
+        out = []
+        for item in items:
+            if not isinstance(item, dict) or not item.get("action_text"):
+                continue
+            scope = item.get("scope", "team")
+            if scope not in ("team", "individual"):
+                scope = "team"
+            out.append({
+                "action_text": str(item["action_text"])[:2000],
+                "scope": scope,
+                "receiver_name": item.get("receiver_name"),
+                "theme": str(item["theme"])[:100] if item.get("theme") else None,
+            })
+        return out
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 def reword_theme_feedback_to_key_points(

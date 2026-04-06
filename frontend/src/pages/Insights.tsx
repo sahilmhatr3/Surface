@@ -1,17 +1,274 @@
 /**
- * Insights: cycle themes, summary, manager summary. Uses GET /cycles/:id/themes, summary, manager-summary.
+ * Insights page.
+ * Manager/admin: compiled review dashboard with per-item eye-icon hide/show + single Publish.
+ * Employee: published sanitized team themes + summary + actions.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { cyclesApi } from "../api/client";
+import { cyclesApi, feedbackApi } from "../api/client";
 import type {
+  ActionResponse,
+  CycleEventResponse,
   ThemesResponse,
   CycleSummaryResponse,
-  ManagerSummaryResponse,
+  ManagerReviewResponse,
+  TeammateResponse,
 } from "../api/types";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
+import FeedbackSubNav from "../components/FeedbackSubNav";
+
+// ---------- tiny helpers ----------
+
+function capitalize(s: string) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+const SENTIMENT_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
+  positive: {
+    label: "Positive",
+    cls: "bg-white/5 text-emerald-400/75 border border-emerald-500/20",
+    dot: "bg-emerald-400/60",
+  },
+  neutral: {
+    label: "Neutral",
+    cls: "bg-white/5 text-surface-text-muted border border-white/8",
+    dot: "bg-surface-text-muted",
+  },
+  negative: {
+    label: "Negative",
+    cls: "bg-white/5 text-rose-400/75 border border-rose-500/20",
+    dot: "bg-rose-400/60",
+  },
+};
+
+function SentimentBadge({ sentiment }: { sentiment: string }) {
+  const cfg = SENTIMENT_CONFIG[sentiment] ?? SENTIMENT_CONFIG.neutral;
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function StrengthDots({ score }: { score: number }) {
+  return (
+    <span className="flex gap-0.5 items-center shrink-0" title={`Strength: ${score}/5`}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={`w-1.5 h-1.5 rounded-full transition-colors ${
+            i <= score ? "bg-surface-accent-cyan" : "bg-surface-pill-border"
+          }`}
+        />
+      ))}
+    </span>
+  );
+}
+
+function EyeOpenIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" strokeWidth={1.8} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  );
+}
+
+function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      title={visible ? "Hide from team" : "Show to team"}
+      className={`p-1 rounded-md transition-colors shrink-0 ${
+        visible
+          ? "text-surface-text-muted hover:text-surface-text hover:bg-white/5"
+          : "text-rose-400/70 hover:text-rose-400 hover:bg-rose-500/10"
+      }`}
+    >
+      {visible ? <EyeOpenIcon /> : <EyeOffIcon />}
+    </button>
+  );
+}
+
+/** Parse the AI compiled brief markdown (## headers + - bullets) into sections. */
+function parseBrief(text: string) {
+  const sections: Array<{ heading: string; bullets: string[]; prefix: string }> = [];
+  let current: { heading: string; bullets: string[]; prefix: string } | null = null;
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("## ")) {
+      if (current) sections.push(current);
+      const heading = t.replace(/^##\s+/, "");
+      const prefix =
+        heading.toLowerCase().includes("working") && !heading.toLowerCase().includes("not")
+          ? "positive"
+          : heading.toLowerCase().includes("not")
+          ? "negative"
+          : "neutral";
+      current = { heading, bullets: [], prefix };
+    } else if (t.startsWith("- ") && current) {
+      current.bullets.push(t.replace(/^-\s+/, ""));
+    }
+  }
+  if (current) sections.push(current);
+  return sections;
+}
+
+const SECTION_COLORS: Record<string, string> = {
+  positive: "border-white/[0.07] bg-white/[0.02]",
+  negative: "border-white/[0.07] bg-white/[0.02]",
+  neutral:  "border-white/[0.07] bg-white/[0.02]",
+};
+
+const SECTION_HEADING_COLORS: Record<string, string> = {
+  positive: "text-emerald-400/70",
+  negative: "text-rose-400/70",
+  neutral:  "text-surface-text-muted",
+};
+
+// ---------- Action row component ----------
+
+function ActionRow({
+  action,
+  nameMap,
+  isHidden,
+  onToggle,
+  displayText,
+  isEditing,
+  editingText,
+  onEditStart,
+  onEditChange,
+  onEditCommit,
+  onEditCancel,
+}: {
+  action: ActionResponse;
+  nameMap: Record<number, string>;
+  isHidden: boolean;
+  onToggle: () => void;
+  displayText: string;
+  isEditing: boolean;
+  editingText: string;
+  onEditStart: () => void;
+  onEditChange: (s: string) => void;
+  onEditCommit: () => void;
+  onEditCancel: () => void;
+}) {
+  const isIndividual = action.receiver_id != null;
+  const targetName = action.receiver_id != null ? (nameMap[action.receiver_id] ?? `Person #${action.receiver_id}`) : null;
+
+  return (
+    <div className={`rounded-xl border overflow-hidden transition-all ${isHidden ? "opacity-50 border-dashed border-surface-pill-border" : "border-surface-pill-border"}`}>
+      <div className="flex items-start gap-3 px-4 py-3">
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border whitespace-nowrap mt-0.5 shrink-0 ${
+          isIndividual
+            ? "bg-violet-500/10 text-violet-400/80 border-violet-500/20"
+            : "bg-sky-500/10 text-sky-400/80 border-sky-500/20"
+        }`}>
+          {isIndividual ? targetName : "Team"}
+        </span>
+        {action.theme && (
+          <span className="text-xs text-surface-text-muted bg-white/5 border border-surface-pill-border px-2 py-0.5 rounded mt-0.5 shrink-0">
+            {action.theme}
+          </span>
+        )}
+        <div className="flex-1 min-w-0">
+          {isEditing ? (
+            <div className="space-y-2">
+              <textarea
+                value={editingText}
+                onChange={(e) => onEditChange(e.target.value)}
+                className="w-full bg-surface-bg border border-surface-pill-border rounded-lg px-3 py-2 text-sm text-surface-text resize-none focus:outline-none focus:border-surface-accent-cyan/50 min-h-[80px]"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onEditCommit}
+                  className="text-xs px-3 py-1 rounded-full border border-surface-accent-cyan/40 text-surface-accent-cyan hover:bg-surface-accent-cyan/10 transition-colors"
+                >
+                  Done
+                </button>
+                <button
+                  type="button"
+                  onClick={onEditCancel}
+                  className="text-xs px-3 py-1 rounded-full border border-surface-pill-border text-surface-text-muted hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className={`text-sm leading-relaxed ${isHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>
+              {displayText}
+            </p>
+          )}
+        </div>
+        {!isEditing && (
+          <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+            <button
+              type="button"
+              onClick={onEditStart}
+              title="Edit"
+              className="p-1 rounded-md text-surface-text-muted hover:text-surface-text hover:bg-white/5 transition-colors"
+            >
+              <EditIcon />
+            </button>
+            <EyeToggle visible={!isHidden} onToggle={onToggle} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- cycle history ----------
+
+const EVENT_CONFIG: Record<string, { label: string; dot: string }> = {
+  created:                { label: "Cycle created",                       dot: "bg-surface-accent-cyan/60" },
+  closed_manual:          { label: "Closed manually",                     dot: "bg-amber-400/60" },
+  closed_auto:            { label: "Closed (end date reached)",            dot: "bg-surface-text-muted/60" },
+  reopened:               { label: "Reopened",                            dot: "bg-sky-400/60" },
+  end_date_extended:      { label: "End date extended",                   dot: "bg-sky-400/40" },
+  compiled:               { label: "Compiled",                            dot: "bg-violet-400/60" },
+  recompiled:             { label: "Recompiled",                          dot: "bg-violet-400/60" },
+  published:              { label: "Published to team",                   dot: "bg-emerald-400/60" },
+  raw_data_wiped_manual:  { label: "Raw responses wiped",                 dot: "bg-rose-400/50" },
+  raw_data_wiped_auto:    { label: "Raw responses auto-wiped",            dot: "bg-rose-400/30" },
+};
+
+function formatEventTime(iso: string | null) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+// ---------- main component ----------
 
 export default function Insights() {
   const { user, loading: authLoading } = useAuth();
@@ -19,42 +276,293 @@ export default function Insights() {
   const [searchParams] = useSearchParams();
   const cycleIdParam = searchParams.get("cycle");
   const cycleId = cycleIdParam ? parseInt(cycleIdParam, 10) : null;
+  const tabParam = searchParams.get("tab"); // "review" | null
 
+  const [review, setReview] = useState<ManagerReviewResponse | null>(null);
   const [themes, setThemes] = useState<ThemesResponse | null>(null);
   const [summary, setSummary] = useState<CycleSummaryResponse | null>(null);
-  const [managerSummary, setManagerSummary] = useState<ManagerSummaryResponse | null>(null);
+  const [teammates, setTeammates] = useState<TeammateResponse[]>([]);
+  const [events, setEvents] = useState<CycleEventResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [savingReview, setSavingReview] = useState(false);
+  const [publishingTeam, setPublishingTeam] = useState(false);
+  const [publishingIndividuals, setPublishingIndividuals] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+
+  // Sidebar section: "team" | "individual" | "actions"
+  const [reviewSection, setReviewSection] = useState<"team" | "individual" | "actions">("team");
+
+  // Feedback hide state
+  const [hiddenThemeIds, setHiddenThemeIds] = useState<Set<number>>(new Set());
+  const [hiddenReceiverSummaryIds, setHiddenReceiverSummaryIds] = useState<Set<number>>(new Set());
+  const [hiddenDirectedSegmentIds, setHiddenDirectedSegmentIds] = useState<Set<number>>(new Set());
+  const [hiddenExampleIndices, setHiddenExampleIndices] = useState<Record<number, Set<number>>>({});
+  const [hiddenHelpfulIndices, setHiddenHelpfulIndices] = useState<Record<number, Set<number>>>({});
+  const [hiddenImprovementIndices, setHiddenImprovementIndices] = useState<Record<number, Set<number>>>({});
+
+  // Action state
+  const [hiddenActionIds, setHiddenActionIds] = useState<Set<number>>(new Set());
+  const [actionEdits, setActionEdits] = useState<Record<number, string>>({});
+  const [editingActionId, setEditingActionId] = useState<number | null>(null);
+  const [editingActionText, setEditingActionText] = useState("");
+  const [addActionOpen, setAddActionOpen] = useState(false);
+  const [addActionScope, setAddActionScope] = useState<"team" | "individual">("team");
+  const [addActionReceiverId, setAddActionReceiverId] = useState<number | null>(null);
+  const [addActionText, setAddActionText] = useState("");
+  const [addingAction, setAddingAction] = useState(false);
+
+  const isManagerView = user?.role === "manager" || user?.role === "admin";
+
+  // Show manager review panel when explicitly requested via ?tab=review,
+  // OR when manager is viewing a compiled-but-unpublished cycle (nothing in team view yet).
+  const showReview =
+    isManagerView &&
+    (tabParam === "review" ||
+      (review != null && !review.team_published && !review.individuals_published));
+
+  const nameMap = useMemo<Record<number, string>>(() => {
+    const m: Record<number, string> = {};
+    if (user) m[user.id] = `${user.name} (you)`;
+    teammates.forEach((t) => { m[t.id] = t.name; });
+    return m;
+  }, [user, teammates]);
+
+  const hydrateHiddenState = (r: ManagerReviewResponse) => {
+    setHiddenThemeIds(new Set(r.themes.filter((x) => x.id != null && x.is_hidden).map((x) => x.id as number)));
+    setHiddenReceiverSummaryIds(new Set(r.receiver_summaries.filter((x) => x.id != null && x.is_hidden).map((x) => x.id as number)));
+    setHiddenDirectedSegmentIds(new Set(r.directed_segments.filter((x) => x.id != null && x.is_hidden).map((x) => x.id as number)));
+    const exIdx: Record<number, Set<number>> = {};
+    r.themes.forEach((th) => { if (th.id != null) exIdx[th.id] = new Set(th.hidden_example_indices ?? []); });
+    setHiddenExampleIndices(exIdx);
+    const hlpIdx: Record<number, Set<number>> = {};
+    const impIdx: Record<number, Set<number>> = {};
+    r.receiver_summaries.forEach((rs) => {
+      if (rs.id != null) {
+        hlpIdx[rs.id] = new Set(rs.hidden_helpful_indices ?? []);
+        impIdx[rs.id] = new Set(rs.hidden_improvement_indices ?? []);
+      }
+    });
+    setHiddenHelpfulIndices(hlpIdx);
+    setHiddenImprovementIndices(impIdx);
+    setHiddenActionIds(new Set(r.actions.filter((a) => a.is_hidden).map((a) => a.id)));
+    setActionEdits({});
+    setEditingActionId(null);
+    setIsDirty(false);
+  };
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/login");
-      return;
-    }
+    if (!authLoading && !user) { navigate("/login"); return; }
     if (!user) return;
-    if (!cycleId || isNaN(cycleId)) {
-      setLoading(false);
-      return;
-    }
+    if (!cycleId || isNaN(cycleId)) { setLoading(false); return; }
     setError(null);
     setLoading(true);
-    Promise.all([
-      cyclesApi.getThemes(cycleId),
-      cyclesApi.getSummary(cycleId),
-      user.role === "manager" || user.role === "admin"
-        ? cyclesApi.getManagerSummary(cycleId).catch(() => null)
-        : Promise.resolve(null),
-    ])
-      .then(([t, s, m]) => {
+    const reqs = isManagerView
+      ? Promise.all([cyclesApi.getManagerReview(cycleId), cyclesApi.getThemes(cycleId), cyclesApi.getSummary(cycleId), feedbackApi.getTeammates(), cyclesApi.getEvents(cycleId)])
+      : Promise.all([Promise.resolve(null), cyclesApi.getThemes(cycleId), cyclesApi.getSummary(cycleId), feedbackApi.getTeammates(), cyclesApi.getEvents(cycleId)]);
+    reqs
+      .then(([r, t, s, tm, ev]) => {
+        setReview(r as ManagerReviewResponse | null);
         setThemes(t);
         setSummary(s);
-        setManagerSummary(m ?? null);
+        setTeammates(tm);
+        setEvents(ev ?? []);
+        if (r) hydrateHiddenState(r as ManagerReviewResponse);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, navigate, cycleId]);
 
-  if (authLoading) {
+  const markDirty = () => setIsDirty(true);
+
+  function toggleTheme(id: number | null) {
+    if (id == null) return;
+    setHiddenThemeIds((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    markDirty();
+  }
+  function toggleReceiverSummary(id: number | null) {
+    if (id == null) return;
+    setHiddenReceiverSummaryIds((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    markDirty();
+  }
+  function toggleDirectedSegment(id: number | null) {
+    if (id == null) return;
+    setHiddenDirectedSegmentIds((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    markDirty();
+  }
+  function toggleExampleIndex(themeId: number | null, idx: number) {
+    if (themeId == null) return;
+    setHiddenExampleIndices((p) => {
+      const cur = new Set(p[themeId] ?? []);
+      cur.has(idx) ? cur.delete(idx) : cur.add(idx);
+      return { ...p, [themeId]: cur };
+    });
+    markDirty();
+  }
+  function toggleHelpfulIndex(rsId: number | null, idx: number) {
+    if (rsId == null) return;
+    setHiddenHelpfulIndices((p) => {
+      const cur = new Set(p[rsId] ?? []);
+      cur.has(idx) ? cur.delete(idx) : cur.add(idx);
+      return { ...p, [rsId]: cur };
+    });
+    markDirty();
+  }
+  function toggleImprovementIndex(rsId: number | null, idx: number) {
+    if (rsId == null) return;
+    setHiddenImprovementIndices((p) => {
+      const cur = new Set(p[rsId] ?? []);
+      cur.has(idx) ? cur.delete(idx) : cur.add(idx);
+      return { ...p, [rsId]: cur };
+    });
+    markDirty();
+  }
+  function toggleAction(id: number) {
+    setHiddenActionIds((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    markDirty();
+  }
+  function startEditAction(a: ActionResponse) {
+    setEditingActionId(a.id);
+    setEditingActionText(actionEdits[a.id] ?? a.action_text);
+  }
+  function commitEditAction(id: number) {
+    const original = review?.actions.find((a) => a.id === id)?.action_text ?? "";
+    const newText = editingActionText.trim();
+    if (newText && newText !== original) {
+      setActionEdits((p) => ({ ...p, [id]: newText }));
+      markDirty();
+    } else if (!newText) {
+      // revert if cleared
+      setActionEdits((p) => { const n = { ...p }; delete n[id]; return n; });
+    }
+    setEditingActionId(null);
+  }
+  function cancelEditAction() {
+    setEditingActionId(null);
+  }
+
+  const buildUpdatePayload = () => ({
+    hidden_theme_ids: Array.from(hiddenThemeIds),
+    hidden_receiver_summary_ids: Array.from(hiddenReceiverSummaryIds),
+    hidden_directed_segment_ids: Array.from(hiddenDirectedSegmentIds),
+    theme_hidden_example_indices: Object.fromEntries(
+      Object.entries(hiddenExampleIndices).map(([id, s]) => [Number(id), Array.from(s)])
+    ),
+    receiver_hidden_helpful_indices: Object.fromEntries(
+      Object.entries(hiddenHelpfulIndices).map(([id, s]) => [Number(id), Array.from(s)])
+    ),
+    receiver_hidden_improvement_indices: Object.fromEntries(
+      Object.entries(hiddenImprovementIndices).map(([id, s]) => [Number(id), Array.from(s)])
+    ),
+    hidden_action_ids: Array.from(hiddenActionIds),
+    action_updates: { ...actionEdits } as Record<number, string>,
+  });
+
+  const saveReview = async () => {
+    if (!cycleId) return;
+    setSavingReview(true);
+    setError(null);
+    try {
+      const updated = await cyclesApi.updateManagerReview(cycleId, buildUpdatePayload());
+      setReview(updated);
+      hydrateHiddenState(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save review");
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
+  const refreshAfterPublish = async () => {
+    const [r, t, s, ev] = await Promise.all([
+      cyclesApi.getManagerReview(cycleId!),
+      cyclesApi.getThemes(cycleId!),
+      cyclesApi.getSummary(cycleId!),
+      cyclesApi.getEvents(cycleId!),
+    ]);
+    setReview(r);
+    setThemes(t);
+    setSummary(s);
+    setEvents(ev ?? []);
+    hydrateHiddenState(r);
+  };
+
+  const publishTeam = async () => {
+    if (!cycleId) return;
+    if (isDirty) await saveReview();
+    setPublishingTeam(true);
+    setError(null);
+    try {
+      await cyclesApi.publishTeam(cycleId);
+      await refreshAfterPublish();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to publish team insights");
+    } finally {
+      setPublishingTeam(false);
+    }
+  };
+
+  const publishIndividuals = async () => {
+    if (!cycleId) return;
+    if (isDirty) await saveReview();
+    setPublishingIndividuals(true);
+    setError(null);
+    try {
+      await cyclesApi.publishIndividuals(cycleId);
+      await refreshAfterPublish();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to publish individual feedback");
+    } finally {
+      setPublishingIndividuals(false);
+    }
+  };
+
+  const addAction = async () => {
+    if (!cycleId || !addActionText.trim()) return;
+    if (addActionScope === "individual" && !addActionReceiverId) return;
+    setAddingAction(true);
+    try {
+      await cyclesApi.createAction(cycleId, {
+        action_text: addActionText.trim(),
+        receiver_id: addActionScope === "individual" ? addActionReceiverId : null,
+      });
+      const updated = await cyclesApi.getManagerReview(cycleId);
+      setReview(updated);
+      hydrateHiddenState(updated);
+      setAddActionOpen(false);
+      setAddActionText("");
+      setAddActionScope("team");
+      setAddActionReceiverId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add action");
+    } finally {
+      setAddingAction(false);
+    }
+  };
+
+  // Auto-pick the most recent useful cycle when none is specified in the URL.
+  // listCycles() returns cycles start_date DESC (most recent first), so iterate directly.
+  useEffect(() => {
+    if (cycleId || authLoading || !user) return;
+    cyclesApi.listCycles().then((list) => {
+      const priority = ["published", "compiled", "closed", "open"];
+      let best: typeof list[0] | null = null;
+      for (const status of priority) {
+        const match = list.find((c) => c.status === status);
+        if (match) { best = match; break; }
+      }
+      if (!best && list.length) best = list[0];
+      if (best) navigate(`/insights?cycle=${best.id}`, { replace: true });
+    }).catch(() => {/* stay on page */});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycleId, authLoading, user]);
+
+  if (authLoading) return <section className="min-h-[60vh] flex items-center justify-center"><LoadingSpinner /></section>;
+  if (!user) return null;
+
+  if (!cycleId || isNaN(cycleId)) {
     return (
       <section className="min-h-[60vh] flex items-center justify-center">
         <LoadingSpinner />
@@ -62,149 +570,698 @@ export default function Insights() {
     );
   }
 
-  if (!user) return null;
-
-  if (!cycleId || isNaN(cycleId)) {
-    return (
-      <section className="max-w-xl mx-auto px-4 py-16">
-        <p className="text-surface-text-muted mb-4">
-          Select a cycle from the dashboard to view insights.
-        </p>
-        <button
-          type="button"
-          onClick={() => navigate("/dashboard")}
-          className="text-surface-accent-cyan hover:underline"
-        >
-          Go to Dashboard
-        </button>
-      </section>
-    );
-  }
+  // Visible preview team actions (for preview mode — reflects current unsaved hide state)
+  const previewTeamActions = review
+    ? review.actions.filter((a) => a.receiver_id == null && !hiddenActionIds.has(a.id))
+    : [];
 
   return (
-    <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-      <h1 className="text-3xl sm:text-4xl font-bold text-surface-text-strong tracking-tight mb-10">
-        Insights · Cycle {cycleId}
-      </h1>
+    <section className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+      <FeedbackSubNav
+        activeTab={showReview ? "review" : "team"}
+        cycleId={cycleId}
+        isManagerView={isManagerView}
+      />
 
-      {error && (
-        <ErrorMessage message={error} onRetry={() => setError(null)} />
-      )}
+      {error && <div className="mb-6"><ErrorMessage message={error} onRetry={() => setError(null)} /></div>}
 
-      {!error && loading && (
-        <div className="flex justify-center py-12">
-          <LoadingSpinner />
-        </div>
-      )}
+      {loading && <div className="flex justify-center py-16"><LoadingSpinner /></div>}
 
-      {!error && !loading && summary && (
-        <div className="space-y-10">
-          {themes && (
-            <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
-              <h2 className="text-lg font-semibold text-surface-text-strong mb-2">
-                Participation
-              </h2>
-              <p className="text-surface-text-muted text-sm mb-4">
-                Rants: {themes.participation_rants} · Structured:{" "}
-                {themes.participation_structured}
-              </p>
-              <h2 className="text-lg font-semibold text-surface-text-strong mb-3 mt-6">
-                Themes
-              </h2>
-              <ul className="space-y-3">
-                {themes.themes.map((th, i) => (
-                  <li
-                    key={i}
-                    className="border border-surface-pill-border rounded-xl p-4"
-                  >
-                    <span className="font-medium text-surface-text-strong">
-                      {th.theme}
-                    </span>
-                    <span className="text-surface-text-muted text-sm ml-2">
-                      ({th.count}) {th.sentiment_summary}
-                    </span>
-                    {th.below_threshold_note && (
-                      <p className="text-sm text-surface-text-muted mt-2">
-                        {th.below_threshold_note}
-                      </p>
+      {!loading && (
+        <div className="space-y-8">
+
+          {/* ── MANAGER REVIEW DASHBOARD ── */}
+          {showReview && review && (
+            <div className="rounded-2xl bg-surface-card border border-surface-pill-border overflow-hidden">
+
+              {/* Header bar */}
+              <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-surface-pill-border">
+                <div>
+                  <h2 className="text-lg font-semibold text-surface-text-strong">
+                    {previewMode ? "Team view preview" : "Manager review"}
+                  </h2>
+                  <p className="text-surface-text-muted text-xs mt-0.5">
+                    {previewMode
+                      ? "Exactly what your team will see after publish"
+                      : "Use eye icons to control what the team sees, then publish each section"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-2">
+                    {review.team_published && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/20">
+                        Team live
+                      </span>
                     )}
-                    {th.example_comments.length > 0 && (
-                      <ul className="mt-2 space-y-1 text-sm text-surface-text">
-                        {th.example_comments.slice(0, 3).map((c, j) => (
-                          <li key={j} className="italic">
-                            "{c}"
-                          </li>
+                    {review.individuals_published && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-violet-500/10 text-violet-400/80 border border-violet-500/20">
+                        Individual live
+                      </span>
+                    )}
+                    {!review.team_published && !review.individuals_published && (
+                      <span className="text-xs px-2.5 py-1 rounded-full font-medium border bg-white/5 text-surface-text-muted border-white/10">
+                        Compiled · Unpublished
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex rounded-lg border border-surface-pill-border overflow-hidden text-xs font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMode(false)}
+                      className={`px-3 py-1.5 transition-colors ${
+                        !previewMode
+                          ? "bg-surface-accent-cyan/15 text-surface-accent-cyan"
+                          : "text-surface-text-muted hover:bg-white/5"
+                      }`}
+                    >
+                      Review
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMode(true)}
+                      className={`px-3 py-1.5 border-l border-surface-pill-border transition-colors ${
+                        previewMode
+                          ? "bg-surface-accent-cyan/15 text-surface-accent-cyan"
+                          : "text-surface-text-muted hover:bg-white/5"
+                      }`}
+                    >
+                      Preview
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* PREVIEW MODE */}
+              {previewMode && (
+                <div className="p-6 space-y-6">
+                  {themes && themes.themes.filter((th) => !th.is_hidden).length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Themes</h3>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {themes.themes.filter((th) => !th.is_hidden).map((th, i) => (
+                          <div key={i} className="rounded-xl border border-surface-pill-border overflow-hidden">
+                            <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-pill-border/40">
+                              <span className="font-medium text-surface-text-strong flex-1">{capitalize(th.theme)}</span>
+                              <SentimentBadge sentiment={th.dominant_sentiment} />
+                              <StrengthDots score={th.strength_score} />
+                            </div>
+                            {th.example_comments.filter((_, ci) => !th.hidden_example_indices.includes(ci)).map((c, ci) => (
+                              <div key={ci} className="flex items-start gap-2 px-4 py-2.5 border-b border-surface-pill-border/20 last:border-0">
+                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-surface-accent-cyan/50 shrink-0" />
+                                <p className="text-sm text-surface-text">{c}</p>
+                              </div>
+                            ))}
+                            {th.below_threshold_note && <p className="text-xs text-surface-text-muted px-4 py-2">{th.below_threshold_note}</p>}
+                          </div>
                         ))}
-                      </ul>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {summary.summary_text && (
-            <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
-              <h2 className="text-lg font-semibold text-surface-text-strong mb-3">
-                Cycle summary
-              </h2>
-              <p className="text-surface-text whitespace-pre-wrap">
-                {summary.summary_text}
-              </p>
-            </div>
-          )}
-
-          {summary.actions.length > 0 && (
-            <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
-              <h2 className="text-lg font-semibold text-surface-text-strong mb-3">
-                Manager actions
-              </h2>
-              <ul className="space-y-2">
-                {summary.actions.map((a) => (
-                  <li key={a.id} className="text-surface-text">
-                    <span className="text-surface-text-muted text-sm">
-                      [{a.theme}]
-                    </span>{" "}
-                    {a.action_text}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {managerSummary && (user.role === "manager" || user.role === "admin") && (
-            <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
-              <h2 className="text-lg font-semibold text-surface-text-strong mb-3">
-                Feedback about you (manager)
-              </h2>
-              {managerSummary.below_threshold_note ? (
-                <p className="text-surface-text-muted text-sm">
-                  {managerSummary.below_threshold_note}
-                </p>
-              ) : (
-                <>
-                  {Object.keys(managerSummary.average_scores).length > 0 && (
-                    <p className="text-surface-text text-sm mb-2">
-                      Average scores:{" "}
-                      {Object.entries(managerSummary.average_scores).map(
-                        ([k, v]) => `${k}: ${v}`
-                      ).join(", ")}
-                    </p>
+                      </div>
+                    </div>
                   )}
-                  {managerSummary.comment_snippets_helpful.length > 0 && (
-                    <p className="text-surface-text text-sm">
-                      Helpful:{" "}
-                      {managerSummary.comment_snippets_helpful.slice(0, 3).join("; ")}
-                    </p>
+                  {summary?.summary_text && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Cycle summary</h3>
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {parseBrief(summary.summary_text).map((sec, si) => (
+                          <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
+                            <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${SECTION_HEADING_COLORS[sec.prefix] ?? SECTION_HEADING_COLORS.neutral}`}>{sec.heading}</p>
+                            <ul className="space-y-1.5">
+                              {sec.bullets.map((b, bi) => (
+                                <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
+                                  <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
+                                  {b}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                  {managerSummary.comment_snippets_improvement.length > 0 && (
-                    <p className="text-surface-text text-sm mt-1">
-                      Improvement:{" "}
-                      {managerSummary.comment_snippets_improvement.slice(0, 3).join("; ")}
-                    </p>
+                  {previewTeamActions.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Team actions</h3>
+                      <div className="space-y-2">
+                        {previewTeamActions.map((a) => (
+                          <div key={a.id} className="flex items-start gap-3 rounded-xl border border-surface-pill-border px-4 py-3">
+                            {a.theme && (
+                              <span className="text-xs bg-surface-accent-cyan/10 text-surface-accent-cyan border border-surface-accent-cyan/20 rounded px-2 py-0.5 mt-0.5 shrink-0">
+                                {a.theme}
+                              </span>
+                            )}
+                            <p className="text-sm text-surface-text">{actionEdits[a.id] ?? a.action_text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                </>
+                  {(!themes || themes.themes.filter(th => !th.is_hidden).length === 0) && !summary?.summary_text && previewTeamActions.length === 0 && (
+                    <p className="text-surface-text-muted text-sm">Nothing visible to the team yet. Toggle back to Review to include content.</p>
+                  )}
+                </div>
               )}
+
+              {/* REVIEW MODE — sidebar + content */}
+              {!previewMode && (
+                <div className="flex min-h-[480px]">
+
+                  {/* Left sidebar */}
+                  <nav className="w-52 shrink-0 border-r border-surface-pill-border flex flex-col py-3 gap-0.5 px-2">
+                    {([
+                      {
+                        key: "team" as const,
+                        label: "Team",
+                        meta: `${review.themes.length} theme${review.themes.length !== 1 ? "s" : ""}`,
+                        published: review.team_published,
+                        publishedLabel: "Team live",
+                        dot: "bg-emerald-400",
+                      },
+                      {
+                        key: "individual" as const,
+                        label: "Individual",
+                        meta: `${review.receiver_summaries.length} person${review.receiver_summaries.length !== 1 ? "s" : ""}`,
+                        published: review.individuals_published,
+                        publishedLabel: "Individual live",
+                        dot: "bg-violet-400",
+                      },
+                      {
+                        key: "actions" as const,
+                        label: "Actions",
+                        meta: `${review.actions.length} action${review.actions.length !== 1 ? "s" : ""}`,
+                        published: review.team_published || review.individuals_published,
+                        publishedLabel: "Has live",
+                        dot: "bg-sky-400",
+                      },
+                    ] as const).map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setReviewSection(item.key)}
+                        className={`w-full text-left rounded-lg px-3 py-2.5 transition-colors group ${
+                          reviewSection === item.key
+                            ? "bg-white/[0.06] text-surface-text-strong"
+                            : "text-surface-text-muted hover:text-surface-text hover:bg-white/[0.03]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 mb-0.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 transition-opacity ${item.published ? item.dot : "bg-surface-pill-border"}`} />
+                          <span className="text-sm font-medium">{item.label}</span>
+                        </div>
+                        <p className="text-xs text-surface-text-muted pl-4.5 ml-0.5">{item.meta}</p>
+                        {item.published && (
+                          <p className={`text-xs pl-4.5 ml-0.5 mt-0.5 ${
+                            item.key === "team" ? "text-emerald-400/70" : item.key === "individual" ? "text-violet-400/70" : "text-sky-400/70"
+                          }`}>{item.publishedLabel}</p>
+                        )}
+                      </button>
+                    ))}
+                  </nav>
+
+                  {/* Content area */}
+                  <div className="flex-1 min-w-0 flex flex-col">
+
+                    {/* ── TEAM SECTION ── */}
+                    {reviewSection === "team" && (
+                      <div className="p-6 space-y-8 flex-1">
+
+                        {/* Compiled brief */}
+                        {review.summary_text && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Compiled brief</h3>
+                            <div className="grid sm:grid-cols-2 gap-3">
+                              {parseBrief(review.summary_text).map((sec, si) => (
+                                <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
+                                  <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${SECTION_HEADING_COLORS[sec.prefix] ?? SECTION_HEADING_COLORS.neutral}`}>
+                                    {sec.heading}
+                                  </p>
+                                  <ul className="space-y-1.5">
+                                    {sec.bullets.map((b, bi) => (
+                                      <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
+                                        <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
+                                        {b}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Themes */}
+                        {review.themes.length > 0 && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Themes</h3>
+                            <div className="grid sm:grid-cols-2 gap-3">
+                              {review.themes.map((th) => {
+                                const hidden = th.id != null && hiddenThemeIds.has(th.id);
+                                return (
+                                  <div key={th.id ?? th.theme} className={`rounded-xl border overflow-hidden transition-all ${hidden ? "border-dashed border-surface-pill-border opacity-50" : "border-surface-pill-border"}`}>
+                                    <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-pill-border/40">
+                                      <span className="font-medium text-surface-text-strong flex-1 truncate">{capitalize(th.theme)}</span>
+                                      <SentimentBadge sentiment={th.dominant_sentiment} />
+                                      <StrengthDots score={th.strength_score} />
+                                      <EyeToggle visible={!hidden} onToggle={() => toggleTheme(th.id)} />
+                                    </div>
+                                    {th.example_comments.length > 0 && !hidden && (
+                                      <div>
+                                        {th.example_comments.map((c, ci) => {
+                                          const pointHidden = th.id != null && (hiddenExampleIndices[th.id]?.has(ci) ?? false);
+                                          return (
+                                            <div key={ci} className={`flex items-start gap-2 px-4 py-2.5 border-b border-surface-pill-border/20 last:border-0 ${pointHidden ? "opacity-40" : ""}`}>
+                                              <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${pointHidden ? "bg-surface-pill-border" : "bg-surface-accent-cyan/60"}`} />
+                                              <p className={`text-sm flex-1 ${pointHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>{c}</p>
+                                              <EyeToggle visible={!pointHidden} onToggle={() => toggleExampleIndex(th.id, ci)} />
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    {th.below_threshold_note && !hidden && (
+                                      <p className="text-xs text-surface-text-muted px-4 py-2">{th.below_threshold_note}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {review.themes.length === 0 && !review.summary_text && (
+                          <p className="text-surface-text-muted text-sm">No team content compiled yet.</p>
+                        )}
+
+                        {/* Team section action bar */}
+                        <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50 mt-auto">
+                          <div className="flex items-center gap-2">
+                            {isDirty && <span className="text-xs text-amber-400/80">Unsaved changes</span>}
+                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">Review saved</span>}
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
+                              {savingReview ? "Saving…" : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={publishTeam}
+                              disabled={publishingTeam || review.team_published}
+                              className="px-5 py-2 rounded-full text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-all"
+                            >
+                              {publishingTeam ? "Publishing…" : review.team_published ? "Team published" : "Publish team insights"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── INDIVIDUAL SECTION ── */}
+                    {reviewSection === "individual" && (
+                      <div className="p-6 space-y-8 flex-1">
+
+                        {/* Structured feedback per person */}
+                        {review.receiver_summaries.length > 0 && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Structured feedback</h3>
+                            <div className="space-y-3">
+                              {review.receiver_summaries.map((rs) => {
+                                const hidden = rs.id != null && hiddenReceiverSummaryIds.has(rs.id);
+                                const name = rs.receiver_id != null ? (nameMap[rs.receiver_id] ?? `Person #${rs.receiver_id}`) : "Unknown";
+                                return (
+                                  <div key={rs.id ?? rs.receiver_id} className={`rounded-xl border overflow-hidden transition-all ${hidden ? "border-dashed border-surface-pill-border opacity-50" : "border-surface-pill-border"}`}>
+                                    <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-pill-border/40">
+                                      <span className="font-medium text-surface-text-strong flex-1">{name}</span>
+                                      {Object.entries(rs.average_scores).map(([k, v]) => (
+                                        <span key={k} className="text-xs bg-white/5 border border-surface-pill-border px-2 py-0.5 rounded whitespace-nowrap">
+                                          {capitalize(k)} {v.toFixed(1)}
+                                        </span>
+                                      ))}
+                                      <SentimentBadge sentiment={rs.sentiment} />
+                                      <StrengthDots score={rs.strength_score} />
+                                      <EyeToggle visible={!hidden} onToggle={() => toggleReceiverSummary(rs.id)} />
+                                    </div>
+                                    {!hidden && (
+                                      <>
+                                        {rs.comment_snippets_helpful.length > 0 && (
+                                          <div className="border-b border-surface-pill-border/20">
+                                            <p className="text-xs font-medium text-surface-text-muted px-4 pt-2.5 pb-1">What helped</p>
+                                            {rs.comment_snippets_helpful.map((s, si) => {
+                                              const ptHidden = rs.id != null && (hiddenHelpfulIndices[rs.id]?.has(si) ?? false);
+                                              return (
+                                                <div key={si} className={`flex items-start gap-2 px-4 py-2 border-b border-surface-pill-border/10 last:border-0 ${ptHidden ? "opacity-40" : ""}`}>
+                                                  <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${ptHidden ? "bg-surface-pill-border/40" : "bg-surface-text-muted/50"}`} />
+                                                  <p className={`text-sm flex-1 ${ptHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>{s}</p>
+                                                  <EyeToggle visible={!ptHidden} onToggle={() => toggleHelpfulIndex(rs.id, si)} />
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                        {rs.comment_snippets_improvement.length > 0 && (
+                                          <div>
+                                            <p className="text-xs font-medium text-surface-text-muted px-4 pt-2.5 pb-1">Could improve</p>
+                                            {rs.comment_snippets_improvement.map((s, si) => {
+                                              const ptHidden = rs.id != null && (hiddenImprovementIndices[rs.id]?.has(si) ?? false);
+                                              return (
+                                                <div key={si} className={`flex items-start gap-2 px-4 py-2 border-b border-surface-pill-border/10 last:border-0 ${ptHidden ? "opacity-40" : ""}`}>
+                                                  <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${ptHidden ? "bg-surface-pill-border" : "bg-amber-400/60"}`} />
+                                                  <p className={`text-sm flex-1 ${ptHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>{s}</p>
+                                                  <EyeToggle visible={!ptHidden} onToggle={() => toggleImprovementIndex(rs.id, si)} />
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                        {rs.below_threshold_note && (
+                                          <p className="text-xs text-surface-text-muted px-4 py-2">{rs.below_threshold_note}</p>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Directed open feedback (from rants) */}
+                        {review.directed_segments.length > 0 && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Directed open feedback</h3>
+                            <div className="space-y-2">
+                              {review.directed_segments.map((seg) => {
+                                const segId = (seg as { id?: number | null }).id ?? null;
+                                const receiverId = (seg as { receiver_id?: number | null }).receiver_id ?? null;
+                                const segSentiment = (seg as { sentiment?: string }).sentiment ?? "neutral";
+                                const segTheme = (seg as { theme?: string }).theme ?? "";
+                                const segSnippet = (seg as { snippet?: string }).snippet ?? "";
+                                const isHidden = segId != null && hiddenDirectedSegmentIds.has(segId);
+                                const dotCls = SENTIMENT_CONFIG[segSentiment]?.dot ?? "bg-surface-text-muted";
+                                const recName = receiverId != null ? (nameMap[receiverId] ?? `Person #${receiverId}`) : "Unknown";
+                                return (
+                                  <div key={segId ?? `${receiverId}-${segTheme}-${segSnippet.slice(0, 8)}`} className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${isHidden ? "opacity-40 border-dashed border-surface-pill-border" : "border-surface-pill-border"}`}>
+                                    <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
+                                    <div className="flex-1 min-w-0">
+                                      <p className={`text-sm ${isHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>{segSnippet}</p>
+                                      <p className="text-xs text-surface-text-muted mt-1">
+                                        {recName} · {segTheme} · {segSentiment}
+                                      </p>
+                                    </div>
+                                    <EyeToggle visible={!isHidden} onToggle={() => toggleDirectedSegment(segId)} />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {review.receiver_summaries.length === 0 && review.directed_segments.length === 0 && (
+                          <p className="text-surface-text-muted text-sm">No individual feedback compiled yet.</p>
+                        )}
+
+                        {/* Individual section action bar */}
+                        <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
+                          <div className="flex items-center gap-2">
+                            {isDirty && <span className="text-xs text-amber-400/80">Unsaved changes</span>}
+                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">Review saved</span>}
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
+                              {savingReview ? "Saving…" : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={publishIndividuals}
+                              disabled={publishingIndividuals || review.individuals_published}
+                              className="px-5 py-2 rounded-full text-sm font-semibold border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 disabled:opacity-40 transition-all"
+                            >
+                              {publishingIndividuals ? "Publishing…" : review.individuals_published ? "Individual published" : "Publish individual feedback"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── ACTIONS SECTION ── */}
+                    {reviewSection === "actions" && (
+                      <div className="p-6 space-y-6 flex-1">
+
+                        {/* AI Suggested */}
+                        {review.actions.filter((a) => a.is_ai_generated).length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider">AI Suggested</h3>
+                              <span className="text-xs text-surface-text-muted bg-white/5 px-2 py-0.5 rounded-full border border-surface-pill-border">
+                                {review.actions.filter((a) => a.is_ai_generated).length}
+                              </span>
+                            </div>
+                            <p className="text-xs text-surface-text-muted mb-3">Generated at compile time. Edit or hide before publishing.</p>
+                            <div className="space-y-2">
+                              {review.actions.filter((a) => a.is_ai_generated).map((a) => (
+                                <ActionRow
+                                  key={a.id}
+                                  action={a}
+                                  nameMap={nameMap}
+                                  isHidden={hiddenActionIds.has(a.id)}
+                                  onToggle={() => toggleAction(a.id)}
+                                  displayText={actionEdits[a.id] ?? a.action_text}
+                                  isEditing={editingActionId === a.id}
+                                  editingText={editingActionText}
+                                  onEditStart={() => startEditAction(a)}
+                                  onEditChange={setEditingActionText}
+                                  onEditCommit={() => commitEditAction(a.id)}
+                                  onEditCancel={cancelEditAction}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Manager-created */}
+                        {review.actions.filter((a) => !a.is_ai_generated).length > 0 && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-3">Added by you</h3>
+                            <div className="space-y-2">
+                              {review.actions.filter((a) => !a.is_ai_generated).map((a) => (
+                                <ActionRow
+                                  key={a.id}
+                                  action={a}
+                                  nameMap={nameMap}
+                                  isHidden={hiddenActionIds.has(a.id)}
+                                  onToggle={() => toggleAction(a.id)}
+                                  displayText={actionEdits[a.id] ?? a.action_text}
+                                  isEditing={editingActionId === a.id}
+                                  editingText={editingActionText}
+                                  onEditStart={() => startEditAction(a)}
+                                  onEditChange={setEditingActionText}
+                                  onEditCommit={() => commitEditAction(a.id)}
+                                  onEditCancel={cancelEditAction}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {review.actions.length === 0 && !addActionOpen && (
+                          <p className="text-surface-text-muted text-sm">No actions yet. AI suggestions are generated at compile time, or add one manually below.</p>
+                        )}
+
+                        {/* Add action form */}
+                        {addActionOpen ? (
+                          <div className="rounded-xl border border-surface-pill-border overflow-hidden">
+                            <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-pill-border/40">
+                              <span className="text-sm font-medium text-surface-text-strong flex-1">New action</span>
+                              <button type="button" onClick={() => { setAddActionOpen(false); setAddActionText(""); setAddActionScope("team"); setAddActionReceiverId(null); }} className="text-xs text-surface-text-muted hover:text-surface-text transition-colors">
+                                Cancel
+                              </button>
+                            </div>
+                            <div className="p-4 space-y-4">
+                              <div>
+                                <label className="text-xs font-medium text-surface-text-muted mb-2 block">Scope</label>
+                                <div className="flex rounded-lg border border-surface-pill-border overflow-hidden text-sm w-fit">
+                                  <button type="button" onClick={() => { setAddActionScope("team"); setAddActionReceiverId(null); }} className={`px-4 py-2 transition-colors ${addActionScope === "team" ? "bg-surface-accent-cyan/15 text-surface-accent-cyan" : "text-surface-text-muted hover:bg-white/5"}`}>
+                                    Team
+                                  </button>
+                                  <button type="button" onClick={() => setAddActionScope("individual")} className={`px-4 py-2 border-l border-surface-pill-border transition-colors ${addActionScope === "individual" ? "bg-surface-accent-cyan/15 text-surface-accent-cyan" : "text-surface-text-muted hover:bg-white/5"}`}>
+                                    Individual
+                                  </button>
+                                </div>
+                              </div>
+                              {addActionScope === "individual" && (
+                                <div>
+                                  <label className="text-xs font-medium text-surface-text-muted mb-1.5 block">Team member</label>
+                                  <select
+                                    value={addActionReceiverId ?? ""}
+                                    onChange={(e) => setAddActionReceiverId(e.target.value ? Number(e.target.value) : null)}
+                                    className="bg-surface-bg border border-surface-pill-border rounded-lg px-3 py-2 text-sm text-surface-text focus:outline-none focus:border-surface-accent-cyan/50"
+                                  >
+                                    <option value="">Select person…</option>
+                                    {teammates.map((t) => (
+                                      <option key={t.id} value={t.id}>{t.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                              <div>
+                                <label className="text-xs font-medium text-surface-text-muted mb-1.5 block">Action</label>
+                                <textarea
+                                  value={addActionText}
+                                  onChange={(e) => setAddActionText(e.target.value)}
+                                  placeholder="Describe the action…"
+                                  className="w-full bg-surface-bg border border-surface-pill-border rounded-lg px-3 py-2 text-sm text-surface-text resize-none focus:outline-none focus:border-surface-accent-cyan/50 min-h-[100px]"
+                                />
+                              </div>
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={addAction}
+                                  disabled={addingAction || !addActionText.trim() || (addActionScope === "individual" && !addActionReceiverId)}
+                                  className="px-5 py-2 rounded-full text-sm font-medium border border-surface-accent-cyan/40 text-surface-accent-cyan hover:bg-surface-accent-cyan/10 disabled:opacity-40 transition-all"
+                                >
+                                  {addingAction ? "Adding…" : "Add action"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setAddActionOpen(true)}
+                            className="w-full rounded-xl border border-dashed border-surface-pill-border px-4 py-3 text-sm text-surface-text-muted hover:text-surface-text hover:border-white/20 hover:bg-white/[0.02] transition-all text-left"
+                          >
+                            + Add action
+                          </button>
+                        )}
+
+                        {/* Actions bar — save only (actions publish with their respective section) */}
+                        <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
+                          <p className="text-xs text-surface-text-muted">Actions publish with their respective Team or Individual section</p>
+                          <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
+                            {savingReview ? "Saving…" : isDirty ? "Save changes" : "Saved"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              )} {/* end !previewMode */}
+            </div>
+          )}
+
+          {/* ── TEAM VIEW ── */}
+          {!showReview && themes && (themes.themes.length > 0 || summary != null) && (
+            <div className="space-y-6">
+
+              {themes.themes.length > 0 && (
+                <div>
+                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">Team themes</h2>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {themes.themes.map((th, i) => (
+                      <div key={i} className="rounded-xl border border-surface-pill-border overflow-hidden">
+                        <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-pill-border/40">
+                          <span className="font-medium text-surface-text-strong flex-1">{capitalize(th.theme)}</span>
+                          <SentimentBadge sentiment={th.dominant_sentiment} />
+                          <StrengthDots score={th.strength_score} />
+                        </div>
+                        {th.example_comments.length > 0 && (
+                          <div>
+                            {th.example_comments.map((c, ci) => (
+                              <div key={ci} className="flex items-start gap-2 px-4 py-2.5 border-b border-surface-pill-border/20 last:border-0">
+                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-surface-accent-cyan/50 shrink-0" />
+                                <p className="text-sm text-surface-text">{c}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {th.below_threshold_note && (
+                          <p className="text-xs text-surface-text-muted px-4 py-2">{th.below_threshold_note}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {summary?.summary_text && (
+                <div>
+                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">Cycle summary</h2>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {parseBrief(summary.summary_text).map((sec, si) => (
+                      <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
+                        <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${SECTION_HEADING_COLORS[sec.prefix] ?? SECTION_HEADING_COLORS.neutral}`}>
+                          {sec.heading}
+                        </p>
+                        <ul className="space-y-1.5">
+                          {sec.bullets.map((b, bi) => (
+                            <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
+                              <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
+                              {b}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {summary && summary.actions.length > 0 && (
+                <div>
+                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">Team actions</h2>
+                  <div className="space-y-2">
+                    {summary.actions.map((a) => (
+                      <div key={a.id} className="flex items-start gap-3 rounded-xl border border-surface-pill-border px-4 py-3">
+                        {a.theme && (
+                          <span className="text-xs bg-surface-accent-cyan/10 text-surface-accent-cyan border border-surface-accent-cyan/20 rounded px-2 py-0.5 mt-0.5 shrink-0">
+                            {a.theme}
+                          </span>
+                        )}
+                        <p className="text-sm text-surface-text">{a.action_text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {themes.themes.length === 0 && !summary?.summary_text && (
+                <p className="text-surface-text-muted text-sm">
+                  Team insights will appear here after the cycle is compiled and published.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!loading && !showReview && !themes && (
+            <p className="text-surface-text-muted text-sm">Insights are not available for this cycle yet.</p>
+          )}
+
+          {/* ── CYCLE HISTORY ── */}
+          {!loading && events.length > 0 && (
+            <div className="rounded-2xl border border-surface-pill-border bg-surface-card overflow-hidden">
+              <div className="px-6 py-4 border-b border-surface-pill-border">
+                <h2 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider">
+                  {isManagerView ? "Cycle history" : "Cycle timeline"}
+                </h2>
+              </div>
+              <div className="px-6 py-4">
+                <ol className="relative border-l border-surface-pill-border/50 ml-2 space-y-0">
+                  {events.map((ev, i) => {
+                    const cfg = EVENT_CONFIG[ev.event_type] ?? { label: ev.event_type, dot: "bg-surface-text-muted/40" };
+                    return (
+                      <li key={ev.id ?? i} className="ml-5 pb-5 last:pb-0">
+                        <span className={`absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-card ${cfg.dot}`} />
+                        <p className="text-sm font-medium text-surface-text-strong leading-tight">{cfg.label}</p>
+                        {ev.actor_name && (
+                          <p className="text-xs text-surface-text-muted mt-0.5">{ev.actor_name}</p>
+                        )}
+                        {ev.note && isManagerView && (
+                          <p className="text-xs text-surface-text-muted/70 mt-0.5 italic">{ev.note}</p>
+                        )}
+                        <p className="text-xs text-surface-text-muted/60 mt-1">{formatEventTime(ev.created_at)}</p>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
             </div>
           )}
         </div>

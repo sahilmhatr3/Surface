@@ -11,14 +11,11 @@ export interface UserResponse {
   role: string;
   team_id: number | null;
   manager_id: number | null;
-  must_reset_password?: boolean;
-  has_temporary_password?: boolean;
 }
 
 export interface Token {
   access_token: string;
   token_type: string;
-  password_reset_required?: boolean;
 }
 
 export interface RegisterResponse {
@@ -55,17 +52,10 @@ export interface UsersImportRequest {
   users: UserImportRow[];
 }
 
-export interface CreatedUserPassword {
-  user_id: number;
-  email: string;
-  temporary_password: string;
-}
-
 export interface UsersImportResponse {
   teams_created: number;
   users_created: number;
   errors: string[];
-  created_user_passwords?: CreatedUserPassword[];
 }
 
 export interface TeamResponse {
@@ -79,8 +69,11 @@ export interface CycleResponse {
   start_date: string;
   end_date: string;
   status: string;
+  team_published: boolean;
+  individuals_published: boolean;
   participation_rants: number | null;
   participation_structured: number | null;
+  raw_data_expires_at: string | null;
   created_at: string | null;
 }
 
@@ -96,9 +89,14 @@ export interface CycleUpdate {
 
 // ---- Cycles (cycles.py) ----
 export interface ThemeItem {
+  id: number | null;
   theme: string;
   count: number;
   sentiment_summary: string;
+  dominant_sentiment: string;
+  strength_score: number;
+  is_hidden: boolean;
+  hidden_example_indices: number[];
   example_comments: string[];
   below_threshold_note: string | null;
 }
@@ -111,8 +109,16 @@ export interface ThemesResponse {
 }
 
 export interface ManagerSummaryResponse {
+  id: number | null;
+  receiver_id: number | null;
   cycle_id: number;
   average_scores: Record<string, number>;
+  respondent_count: number | null;
+  sentiment: string;
+  strength_score: number;
+  is_hidden: boolean;
+  hidden_helpful_indices: number[];
+  hidden_improvement_indices: number[];
   comment_snippets_helpful: string[];
   comment_snippets_improvement: string[];
   below_threshold_note: string | null;
@@ -121,9 +127,38 @@ export interface ManagerSummaryResponse {
 export interface ActionResponse {
   id: number;
   cycle_id: number;
-  theme: string;
+  manager_id: number | null;
+  receiver_id: number | null;
   action_text: string;
+  theme: string | null;
+  is_ai_generated: boolean;
+  is_hidden: boolean;
   created_at: string | null;
+}
+
+export interface ManagerReviewResponse {
+  cycle_id: number;
+  status: string;
+  team_published: boolean;
+  individuals_published: boolean;
+  participation_rants: number;
+  participation_structured: number;
+  summary_text: string | null;
+  themes: ThemeItem[];
+  receiver_summaries: ManagerSummaryResponse[];
+  directed_segments: DirectedRantSegmentItem[];
+  actions: ActionResponse[];
+}
+
+export interface ManagerReviewUpdateRequest {
+  hidden_theme_ids: number[];
+  hidden_receiver_summary_ids: number[];
+  hidden_directed_segment_ids: number[];
+  theme_hidden_example_indices: Record<number, number[]>;
+  receiver_hidden_helpful_indices: Record<number, number[]>;
+  receiver_hidden_improvement_indices: Record<number, number[]>;
+  hidden_action_ids: number[];
+  action_updates: Record<number, string>;
 }
 
 export interface CycleSummaryResponse {
@@ -134,9 +169,28 @@ export interface CycleSummaryResponse {
 }
 
 export interface DirectedRantSegmentItem {
+  id: number | null;
+  receiver_id: number | null;
   snippet: string;
   theme: string;
   sentiment: string;
+  is_hidden: boolean;
+}
+
+export interface ScoreHistoryItem {
+  cycle_id: number;
+  cycle_label: string;
+  start_date: string | null;
+  average_scores: Record<string, number>;
+}
+
+export interface CycleEventResponse {
+  id: number;
+  cycle_id: number;
+  event_type: string;
+  actor_name: string | null;
+  note: string | null;
+  created_at: string | null;
 }
 
 export interface IncomingFeedbackResponse {
@@ -144,11 +198,13 @@ export interface IncomingFeedbackResponse {
   structured: ManagerSummaryResponse | null;
   directed_rant_segments: DirectedRantSegmentItem[];
   directed_rant_below_threshold_note: string | null;
+  individual_actions: ActionResponse[];
 }
 
 export interface ActionCreate {
-  theme: string;
   action_text: string;
+  theme?: string | null;
+  receiver_id?: number | null;
 }
 
 export interface ActionUpdate {

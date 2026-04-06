@@ -1,7 +1,5 @@
 /**
  * Admin Controls: vertical tabs (Users, Create users, Cycles).
- * Users tab has sub-tabs: Users (searchable, sortable; generate password) and Teams (searchable, sortable, expandable).
- * Create users: rows deletable; creates teams by name.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -9,10 +7,18 @@ import { useAuth } from "../hooks/useAuth";
 import { adminApi, cyclesApi } from "../api/client";
 import type {
   UserResponse,
-  UserImportRow,
   TeamResponse,
   CycleResponse,
 } from "../api/types";
+
+interface CreateUserRow {
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: "employee" | "manager" | "admin";
+  team_id: number | null;
+  manager_id: number | null;
+}
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
@@ -69,15 +75,7 @@ export default function AdminControls() {
   const [expandedTeamId, setExpandedTeamId] = useState<number | null>(null);
   const [teamCycles, setTeamCycles] = useState<Record<number, CycleResponse[]>>({});
 
-  const [generatedPasswords, setGeneratedPasswords] = useState<Record<number, string>>({});
-  const [revealedPasswords, setRevealedPasswords] = useState<Set<number>>(new Set());
-  const [generatePasswordUserId, setGeneratePasswordUserId] = useState<number | null>(null);
-  const [revealModalUserId, setRevealModalUserId] = useState<number | null>(null);
-  const [revealModalAdminPassword, setRevealModalAdminPassword] = useState("");
-  const [revealModalError, setRevealModalError] = useState<string | null>(null);
-  const [revealModalSubmitting, setRevealModalSubmitting] = useState(false);
-
-  const [createRows, setCreateRows] = useState<UserImportRow[]>([]);
+  const [createRows, setCreateRows] = useState<CreateUserRow[]>([]);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createResult, setCreateResult] = useState<string | null>(null);
   const [createTeamModalOpen, setCreateTeamModalOpen] = useState(false);
@@ -98,7 +96,9 @@ export default function AdminControls() {
   const [updateCycleSubmitting, setUpdateCycleSubmitting] = useState<number | null>(null);
   const [extendCycleId, setExtendCycleId] = useState<number | null>(null);
   const [extendEndDate, setExtendEndDate] = useState("");
-  const [aggregateCycleSubmitting, setAggregateCycleSubmitting] = useState<number | null>(null);
+  const [compileCycleSubmitting, setCompileCycleSubmitting] = useState<number | null>(null);
+  const [cycleMenuOpen, setCycleMenuOpen] = useState<number | null>(null);
+  const [wipingCycleId, setWipingCycleId] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -227,60 +227,19 @@ export default function AdminControls() {
     else setUserSortBy(by);
   };
 
-  const handleGeneratePassword = async (userId: number) => {
-    setGeneratePasswordUserId(userId);
-    try {
-      const res = await adminApi.generateUserPassword(userId);
-      setGeneratedPasswords((prev) => ({ ...prev, [userId]: res.temporary_password }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate password");
-    } finally {
-      setGeneratePasswordUserId(null);
-    }
-  };
-
-  const handleRevealSubmit = async () => {
-    if (revealModalUserId == null) return;
-    setRevealModalError(null);
-    setRevealModalSubmitting(true);
-    try {
-      const existing = generatedPasswords[revealModalUserId];
-      if (existing) {
-        await adminApi.verifyAdminPassword(revealModalAdminPassword);
-        setRevealedPasswords((prev) => new Set(prev).add(revealModalUserId!));
-      } else {
-        const res = await adminApi.revealUserPassword(revealModalUserId, revealModalAdminPassword);
-        setGeneratedPasswords((prev) => ({ ...prev, [revealModalUserId]: res.temporary_password }));
-        setRevealedPasswords((prev) => new Set(prev).add(revealModalUserId));
-      }
-      setRevealModalUserId(null);
-      setRevealModalAdminPassword("");
-    } catch (e) {
-      setRevealModalError(e instanceof Error ? e.message : "Incorrect password");
-    } finally {
-      setRevealModalSubmitting(false);
-    }
-  };
-
   const handleCreateUsers = async () => {
     if (createRows.length === 0) return;
     setCreateSubmitting(true);
     setCreateResult(null);
     try {
       const payload = createRows.map((r) => ({
-        name: r.name,
+        name: `${r.firstName.trim()} ${r.lastName.trim()}`.trim() || r.firstName.trim(),
         email: r.email,
         role: r.role,
         team_id: r.team_id ?? undefined,
-        team_name: r.team_id == null ? (r.team_name ?? undefined) : undefined,
         manager_id: r.manager_id ?? undefined,
       }));
       const res = await adminApi.importUsers({ users: payload });
-      const pwMap: Record<number, string> = {};
-      (res.created_user_passwords || []).forEach((p) => {
-        pwMap[p.user_id] = p.temporary_password;
-      });
-      setGeneratedPasswords((prev) => ({ ...prev, ...pwMap }));
       setCreateResult(
         `Created ${res.teams_created} team(s), ${res.users_created} user(s).` +
           (res.errors.length ? ` Errors: ${res.errors.join("; ")}` : "")
@@ -298,11 +257,11 @@ export default function AdminControls() {
     setCreateRows((r) => [
       ...r,
       {
-        name: "",
+        firstName: "",
+        lastName: "",
         email: "",
         role: "employee",
-        team_id: teams[0]?.id ?? null,
-        team_name: null,
+        team_id: null,
         manager_id: null,
       },
     ]);
@@ -314,19 +273,37 @@ export default function AdminControls() {
 
   const updateCreateRow = (
     index: number,
-    field: keyof UserImportRow,
+    field: keyof CreateUserRow,
     value: string | number | null
   ) => {
     setCreateRows((r) => {
-      const next = r.map((row, i) =>
-        i !== index ? row : { ...row, [field]: value ?? (field === "manager_id" || field === "team_id" ? null : undefined) }
-      );
-      if (field === "role" && (value === "manager" || value === "admin")) {
-        const row = next[index] as UserImportRow;
-        next[index] = { ...row, manager_id: null };
-      }
+      const next = r.map((row, i) => {
+        if (i !== index) return row;
+        const updated = { ...row, [field]: value };
+        // When role changes away from employee, clear manager
+        if (field === "role" && value !== "employee") {
+          updated.manager_id = null;
+        }
+        return updated;
+      });
       return next;
     });
+  };
+
+  // When a manager is selected for a row, auto-fill the team from the manager's team_id
+  const selectManagerForRow = (index: number, managerId: number) => {
+    const manager = users.find((u) => u.id === managerId);
+    setCreateRows((r) =>
+      r.map((row, i) =>
+        i !== index
+          ? row
+          : {
+              ...row,
+              manager_id: managerId,
+              team_id: manager?.team_id ?? row.team_id,
+            }
+      )
+    );
   };
 
   const handleCreateCycle = async () => {
@@ -374,16 +351,33 @@ export default function AdminControls() {
     setExtendEndDate("");
   };
 
-  const handleAggregateCycle = async (cycleId: number) => {
+  const handleCompileCycle = async (cycleId: number) => {
     if (!selectedTeamId) return;
-    setAggregateCycleSubmitting(cycleId);
+    setCompileCycleSubmitting(cycleId);
     try {
-      await cyclesApi.aggregate(cycleId);
+      await cyclesApi.compile(cycleId);
       await adminApi.listTeamCycles(selectedTeamId).then(setCycles);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to aggregate cycle");
+      setError(e instanceof Error ? e.message : "Failed to compile cycle");
     } finally {
-      setAggregateCycleSubmitting(null);
+      setCompileCycleSubmitting(null);
+    }
+  };
+
+  const handleWipeRawData = async (cycleId: number) => {
+    if (!selectedTeamId) return;
+    setCycleMenuOpen(null);
+    if (!window.confirm(
+      `Wipe raw responses for Cycle #${cycleId}?\n\nThis permanently deletes all raw rants and structured feedback for this cycle. The cycle cannot be recompiled from scratch afterwards. This cannot be undone.`
+    )) return;
+    setWipingCycleId(cycleId);
+    try {
+      await adminApi.wipeRawData(selectedTeamId, cycleId);
+      await adminApi.listTeamCycles(selectedTeamId).then(setCycles);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to wipe raw data");
+    } finally {
+      setWipingCycleId(null);
     }
   };
 
@@ -526,43 +520,7 @@ export default function AdminControls() {
                                 <td className="py-2 pr-3 capitalize">{u.role}</td>
                                 <td className="py-2 pr-3">{teamName(u.team_id)}</td>
                                 <td className="py-2">
-                                  {u.id === user?.id ? (
-                                    <span className="text-surface-text-muted text-sm">—</span>
-                                  ) : generatedPasswords[u.id] || u.has_temporary_password ? (
-                                    <span className="inline-flex items-center gap-1">
-                                      <span className="font-mono">
-                                        {revealedPasswords.has(u.id) && generatedPasswords[u.id]
-                                          ? generatedPasswords[u.id]
-                                          : "••••••••••••"}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          revealedPasswords.has(u.id) && generatedPasswords[u.id]
-                                            ? setRevealedPasswords((prev) => {
-                                                const next = new Set(prev);
-                                                next.delete(u.id);
-                                                return next;
-                                              })
-                                            : setRevealModalUserId(u.id)
-                                        }
-                                        className="p-1 rounded text-surface-text-muted hover:text-surface-accent-cyan"
-                                        title={revealedPasswords.has(u.id) ? "Hide" : "View (enter your password)"}
-                                        aria-label={revealedPasswords.has(u.id) ? "Hide password" : "View password"}
-                                      >
-                                        <EyeIcon />
-                                      </button>
-                                    </span>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleGeneratePassword(u.id)}
-                                      disabled={generatePasswordUserId !== null}
-                                      className={btnClass}
-                                    >
-                                      {generatePasswordUserId === u.id ? "Generating…" : "Generate"}
-                                    </button>
-                                  )}
+                                  <span className="text-xs text-surface-text-muted/60">—</span>
                                 </td>
                               </tr>
                             ))}
@@ -685,43 +643,122 @@ export default function AdminControls() {
 
               {activeTab === "create-users" && (
                 <section className={cardClass}>
-                  <h2 className="text-lg font-semibold text-surface-text-strong mb-4">
+                  <h2 className="text-lg font-semibold text-surface-text-strong mb-1">
                     Create users
                   </h2>
-                  <p className="text-surface-text-muted text-sm mb-4">
-                    Manager/employee get an auto-generated password (view with eye after create).
-                    Select team from dropdown; use “Create new team” to add one. Employees need a manager.
+                  <p className="text-surface-text-muted text-sm mb-5">
+                    New users will receive an invite email from Supabase to set their own password.
+                    For employees, select a manager first — the team will auto-fill from theirs.
                   </p>
                   {createResult && (
                     <p className="text-sm text-surface-text-muted mb-3">{createResult}</p>
                   )}
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {createRows.map((row, i) => (
-                      <div key={i} className="flex flex-wrap items-start gap-2 border-b border-surface-pill-border/50 pb-3">
-                        <input
-                          placeholder="Name"
-                          value={row.name}
-                          onChange={(e) => updateCreateRow(i, "name", e.target.value)}
-                          className={`${inputClass} w-40`}
-                        />
-                        <input
-                          type="email"
-                          placeholder="Email"
-                          value={row.email}
-                          onChange={(e) => updateCreateRow(i, "email", e.target.value)}
-                          className={`${inputClass} w-48`}
-                        />
-                        <select
-                          value={row.role}
-                          onChange={(e) => updateCreateRow(i, "role", e.target.value)}
-                          className={`${inputClass} w-28`}
-                        >
-                          <option value="employee">employee</option>
-                          <option value="manager">manager</option>
-                          <option value="admin">admin</option>
-                        </select>
-                        {/* Team: searchable dropdown with "Create new team" at top */}
-                        <div className="relative min-w-[200px]">
+                      <div key={i} className="rounded-xl border border-surface-pill-border/60 bg-white/[0.02] p-4 space-y-3">
+                        {/* Role selector + remove */}
+                        <div className="flex items-center gap-3">
+                          <label className="text-xs text-surface-text-muted w-10 shrink-0">Role</label>
+                          <select
+                            value={row.role}
+                            onChange={(e) => updateCreateRow(i, "role", e.target.value as CreateUserRow["role"])}
+                            className={`${inputClass} w-36 text-sm`}
+                          >
+                            <option value="employee">Employee</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                          <span className="flex-1" />
+                          <button
+                            type="button"
+                            onClick={() => removeCreateRow(i)}
+                            className="p-1.5 rounded-lg text-surface-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="Remove"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+
+                        {/* Name + Email */}
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            placeholder="First name"
+                            value={row.firstName}
+                            onChange={(e) => updateCreateRow(i, "firstName", e.target.value)}
+                            className={`${inputClass} flex-1 min-w-[130px]`}
+                          />
+                          <input
+                            placeholder="Last name"
+                            value={row.lastName}
+                            onChange={(e) => updateCreateRow(i, "lastName", e.target.value)}
+                            className={`${inputClass} flex-1 min-w-[130px]`}
+                          />
+                          <input
+                            type="email"
+                            placeholder="Email"
+                            value={row.email}
+                            onChange={(e) => updateCreateRow(i, "email", e.target.value)}
+                            className={`${inputClass} flex-[2] min-w-[200px]`}
+                          />
+                        </div>
+
+                        {/* Manager (employees only) — selecting auto-fills team */}
+                        {row.role === "employee" && (
+                          <div className="relative">
+                            <label className="block text-xs text-surface-text-muted mb-1">Manager</label>
+                            <input
+                              type="text"
+                              placeholder="Search manager…"
+                              value={
+                                managerDropdownOpen === i
+                                  ? (managerSearchQuery[i] ?? "")
+                                  : row.manager_id != null
+                                    ? managersList.find((m) => m.id === row.manager_id)?.name ?? ""
+                                    : ""
+                              }
+                              onChange={(e) => setManagerSearchQuery((q) => ({ ...q, [i]: e.target.value }))}
+                              onFocus={() => setManagerDropdownOpen(i)}
+                              className={inputClass}
+                            />
+                            {managerDropdownOpen === i && (
+                              <>
+                                <div className="fixed inset-0 z-10" aria-hidden onClick={() => setManagerDropdownOpen(null)} />
+                                <ul className="absolute z-20 mt-1 max-h-48 overflow-auto rounded-lg border border-surface-pill-border bg-surface-card py-1 w-full shadow-lg">
+                                  {managersList
+                                    .filter(
+                                      (m) =>
+                                        !managerSearchQuery[i] ||
+                                        m.name.toLowerCase().includes(managerSearchQuery[i].toLowerCase()) ||
+                                        m.email.toLowerCase().includes(managerSearchQuery[i].toLowerCase())
+                                    )
+                                    .map((m) => (
+                                      <li
+                                        key={m.id}
+                                        role="option"
+                                        className="px-3 py-2 cursor-pointer hover:bg-white/10 text-sm text-surface-text"
+                                        onClick={() => {
+                                          selectManagerForRow(i, m.id);
+                                          setManagerSearchQuery((q) => ({ ...q, [i]: "" }));
+                                          setManagerDropdownOpen(null);
+                                        }}
+                                      >
+                                        <span className="font-medium">{m.name}</span>
+                                        <span className="text-surface-text-muted ml-2 text-xs">{m.email}</span>
+                                      </li>
+                                    ))}
+                                </ul>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Team */}
+                        <div className="relative">
+                          <label className="block text-xs text-surface-text-muted mb-1">
+                            {row.role === "employee" && row.manager_id != null
+                              ? "Team (auto-filled from manager)"
+                              : "Team"}
+                          </label>
                           <input
                             type="text"
                             placeholder="Search or select team…"
@@ -738,21 +775,14 @@ export default function AdminControls() {
                           />
                           {teamDropdownOpen === i && (
                             <>
-                              <div
-                                className="fixed inset-0 z-10"
-                                aria-hidden
-                                onClick={() => setTeamDropdownOpen(null)}
-                              />
-                              <div className="absolute z-20 mt-1 rounded-lg border border-surface-pill-border bg-surface-card py-1 w-full max-h-56 overflow-hidden flex flex-col">
+                              <div className="fixed inset-0 z-10" aria-hidden onClick={() => setTeamDropdownOpen(null)} />
+                              <div className="absolute z-20 mt-1 rounded-lg border border-surface-pill-border bg-surface-card py-1 w-full max-h-56 overflow-hidden flex flex-col shadow-lg">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    openCreateTeamModal(i);
-                                    setTeamDropdownOpen(null);
-                                  }}
+                                  onClick={() => { openCreateTeamModal(i); setTeamDropdownOpen(null); }}
                                   className="text-left px-3 py-2 text-surface-accent-cyan hover:bg-white/5 text-sm font-medium"
                                 >
-                                  ＋ Create new team
+                                  + Create new team
                                 </button>
                                 <ul className="overflow-auto flex-1" role="listbox">
                                   {teams
@@ -780,75 +810,12 @@ export default function AdminControls() {
                             </>
                           )}
                         </div>
-                        {/* Manager: only for employee; searchable dropdown */}
-                        {row.role === "employee" && (
-                          <div className="relative min-w-[200px]">
-                            <input
-                              type="text"
-                              placeholder="Search manager…"
-                              value={
-                                managerDropdownOpen === i
-                                  ? (managerSearchQuery[i] ?? "")
-                                  : row.manager_id != null
-                                    ? managersList.find((m) => m.id === row.manager_id)?.name ?? ""
-                                    : ""
-                              }
-                              onChange={(e) => setManagerSearchQuery((q) => ({ ...q, [i]: e.target.value }))}
-                              onFocus={() => setManagerDropdownOpen(i)}
-                              className={inputClass}
-                            />
-                            {managerDropdownOpen === i && (
-                              <>
-                                <div
-                                  className="fixed inset-0 z-10"
-                                  aria-hidden
-                                  onClick={() => setManagerDropdownOpen(null)}
-                                />
-                                <ul
-                                  className="absolute z-20 mt-1 max-h-48 overflow-auto rounded-lg border border-surface-pill-border bg-surface-card py-1 w-full"
-                                  role="listbox"
-                                >
-                                  {managersList
-                                    .filter(
-                                      (m) =>
-                                        !managerSearchQuery[i] ||
-                                        m.name.toLowerCase().includes(managerSearchQuery[i].toLowerCase()) ||
-                                        m.email.toLowerCase().includes(managerSearchQuery[i].toLowerCase())
-                                    )
-                                    .map((m) => (
-                                      <li
-                                        key={m.id}
-                                        role="option"
-                                        className="px-3 py-2 cursor-pointer hover:bg-white/10 text-sm text-surface-text"
-                                        onClick={() => {
-                                          updateCreateRow(i, "manager_id", m.id);
-                                          setManagerSearchQuery((q) => ({ ...q, [i]: "" }));
-                                          setManagerDropdownOpen(null);
-                                        }}
-                                      >
-                                        {m.name} ({m.email})
-                                      </li>
-                                    ))}
-                                </ul>
-                              </>
-                            )}
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeCreateRow(i)}
-                          className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-400/30"
-                          title="Remove row"
-                          aria-label="Remove row"
-                        >
-                          <TrashIcon />
-                        </button>
                       </div>
                     ))}
                   </div>
                   <div className="mt-4 flex gap-2">
                     <button type="button" onClick={addCreateRow} className={btnClass}>
-                      Add row
+                      Add user
                     </button>
                     <button
                       type="button"
@@ -856,7 +823,7 @@ export default function AdminControls() {
                       disabled={createSubmitting || createRows.length === 0}
                       className={btnClass}
                     >
-                      {createSubmitting ? "Creating…" : "Create users"}
+                      {createSubmitting ? "Creating…" : `Create ${createRows.length > 1 ? createRows.length + " users" : "user"}`}
                     </button>
                   </div>
                 </section>
@@ -957,13 +924,66 @@ export default function AdminControls() {
                                 {c.status === "closed" && (
                                   <button
                                     type="button"
-                                    onClick={() => handleAggregateCycle(c.id)}
-                                    disabled={aggregateCycleSubmitting === c.id}
+                                    onClick={() => handleCompileCycle(c.id)}
+                                    disabled={compileCycleSubmitting === c.id}
                                     className={btnClass}
                                   >
-                                    {aggregateCycleSubmitting === c.id ? "Aggregating…" : "Aggregate"}
+                                    {compileCycleSubmitting === c.id ? "Compiling…" : "Compile"}
                                   </button>
                                 )}
+
+                                {/* 3-dot menu */}
+                                <div className="relative ml-auto">
+                                  <button
+                                    type="button"
+                                    onClick={() => setCycleMenuOpen(cycleMenuOpen === c.id ? null : c.id)}
+                                    className="p-1.5 rounded-lg text-surface-text-muted hover:text-surface-text hover:bg-white/5 transition-colors"
+                                    title="More options"
+                                  >
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                      <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
+                                    </svg>
+                                  </button>
+                                  {cycleMenuOpen === c.id && (
+                                    <>
+                                      {/* backdrop to close on outside click */}
+                                      <div
+                                        className="fixed inset-0 z-10"
+                                        onClick={() => setCycleMenuOpen(null)}
+                                      />
+                                      <div className="absolute right-0 top-full mt-1 z-20 min-w-[200px] rounded-xl border border-surface-pill-border bg-surface-card shadow-xl overflow-hidden">
+                                        {c.raw_data_expires_at ? (
+                                          <>
+                                            <div className="px-4 py-2 border-b border-surface-pill-border/50">
+                                              <p className="text-xs text-surface-text-muted">
+                                                Raw data auto-wipes{" "}
+                                                {new Date(c.raw_data_expires_at) < new Date()
+                                                  ? "soon"
+                                                  : new Date(c.raw_data_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                              </p>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              disabled={wipingCycleId === c.id}
+                                              onClick={() => handleWipeRawData(c.id)}
+                                              className="w-full text-left px-4 py-2.5 text-sm text-rose-400/80 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                                            >
+                                              {wipingCycleId === c.id ? "Wiping…" : "Force wipe raw responses"}
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <div className="px-4 py-3">
+                                            <p className="text-xs text-surface-text-muted">
+                                              {c.status === "compiled" || c.status === "published"
+                                                ? "Raw responses have already been wiped."
+                                                : "No raw data to wipe."}
+                                            </p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -1058,71 +1078,7 @@ export default function AdminControls() {
         </div>
       )}
 
-      {/* Reveal password modal */}
-      {revealModalUserId != null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className={cardClass + " w-full max-w-sm"}>
-            <h3 className="text-lg font-semibold text-surface-text-strong mb-2">
-              Enter your password to reveal
-            </h3>
-            <p className="text-sm text-surface-text-muted mb-4">
-              Your admin password is required to view this temporary user password.
-            </p>
-            <input
-              type="password"
-              placeholder="Your password"
-              value={revealModalAdminPassword}
-              onChange={(e) => setRevealModalAdminPassword(e.target.value)}
-              className={inputClass + " mb-3"}
-              autoFocus
-            />
-            {revealModalError && (
-              <p className="text-sm text-red-400 mb-2">{revealModalError}</p>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleRevealSubmit}
-                disabled={revealModalSubmitting || !revealModalAdminPassword}
-                className={btnClass}
-              >
-                {revealModalSubmitting ? "Checking…" : "Reveal"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setRevealModalUserId(null);
-                  setRevealModalAdminPassword("");
-                  setRevealModalError(null);
-                }}
-                className={btnClass}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
   );
 }
 

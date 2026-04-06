@@ -2,12 +2,17 @@
  * Centralized API client for Surface backend.
  * Base URL: VITE_API_URL or /api (Vite proxy to backend).
  * All paths and contracts match backend routes exactly.
+ *
+ * Token is always retrieved from the active Supabase session so it stays
+ * fresh (Supabase auto-refreshes tokens before they expire).
  */
+import { supabase } from "../lib/supabase";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
 
-function getToken(): string | null {
-  return localStorage.getItem("surface_token");
+async function getToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
 }
 
 async function request<T>(
@@ -19,7 +24,7 @@ async function request<T>(
     "Content-Type": "application/json",
     ...options.headers,
   };
-  const token = getToken();
+  const token = await getToken();
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
@@ -53,46 +58,8 @@ export class ApiError extends Error {
 
 // ---- Auth ----
 export const authApi = {
-  login: (body: { email: string; password: string }) =>
-    request<{ access_token: string; token_type: string }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-
-  register: (body: import("./types").UserCreate) =>
-    request<import("./types").RegisterResponse>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-
+  /** Fetch the app-level profile for the current Supabase session. */
   me: () => request<import("./types").UserResponse>("/auth/me"),
-
-  changePassword: (currentPassword: string, newPassword: string) =>
-    request<void>("/auth/change-password", {
-      method: "POST",
-      body: JSON.stringify({
-        current_password: currentPassword,
-        new_password: newPassword,
-      }),
-    }),
-
-  forgotPassword: (email: string) =>
-    request<{ message: string }>("/auth/forgot-password", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-    }),
-
-  verifyResetOtp: (email: string, otp: string) =>
-    request<{ reset_token: string }>("/auth/verify-reset-otp", {
-      method: "POST",
-      body: JSON.stringify({ email, otp }),
-    }),
-
-  resetPassword: (resetToken: string, newPassword: string) =>
-    request<void>("/auth/reset-password", {
-      method: "POST",
-      body: JSON.stringify({ reset_token: resetToken, new_password: newPassword }),
-    }),
 };
 
 // ---- Admin (require admin role) ----
@@ -104,30 +71,6 @@ export const adminApi = {
     request<import("./types").UsersImportResponse>("/admin/users/import", {
       method: "POST",
       body: JSON.stringify(body),
-    }),
-
-  setUserPassword: (userId: number, password: string) =>
-    request<void>(`/admin/users/${userId}/password`, {
-      method: "PATCH",
-      body: JSON.stringify({ password }),
-    }),
-
-  generateUserPassword: (userId: number) =>
-    request<{ temporary_password: string }>(`/admin/users/${userId}/password`, {
-      method: "PATCH",
-      body: JSON.stringify({ generate: true }),
-    }),
-
-  verifyAdminPassword: (password: string) =>
-    request<void>("/admin/verify-password", {
-      method: "POST",
-      body: JSON.stringify({ password }),
-    }),
-
-  revealUserPassword: (userId: number, adminPassword: string) =>
-    request<{ temporary_password: string }>(`/admin/users/${userId}/reveal-password`, {
-      method: "POST",
-      body: JSON.stringify({ password: adminPassword }),
     }),
 
   listTeams: () =>
@@ -157,6 +100,11 @@ export const adminApi = {
       `/admin/teams/${teamId}/cycles/${cycleId}`,
       { method: "PATCH", body: JSON.stringify(body) }
     ),
+
+  wipeRawData: (teamId: number, cycleId: number) =>
+    request<void>(`/admin/teams/${teamId}/cycles/${cycleId}/raw-data`, {
+      method: "DELETE",
+    }),
 };
 
 // ---- Cycles (auth; role/team govern access) ----
@@ -194,11 +142,46 @@ export const cyclesApi = {
       { method: "PATCH", body: JSON.stringify(body) }
     ),
 
+  compile: (cycleId: number) =>
+    request<import("./types").CycleResponse>(
+      `/cycles/${cycleId}/compile`,
+      { method: "POST" }
+    ),
+
   aggregate: (cycleId: number) =>
     request<import("./types").CycleResponse>(
       `/cycles/${cycleId}/aggregate`,
       { method: "POST" }
     ),
+
+  getManagerReview: (cycleId: number) =>
+    request<import("./types").ManagerReviewResponse>(`/cycles/${cycleId}/manager-review`),
+
+  updateManagerReview: (
+    cycleId: number,
+    body: import("./types").ManagerReviewUpdateRequest
+  ) =>
+    request<import("./types").ManagerReviewResponse>(`/cycles/${cycleId}/manager-review`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  publish: (cycleId: number) =>
+    request<import("./types").CycleResponse>(`/cycles/${cycleId}/publish`, {
+      method: "POST",
+    }),
+
+  getScoreHistory: () =>
+    request<import("./types").ScoreHistoryItem[]>("/cycles/score-history"),
+
+  getEvents: (cycleId: number) =>
+    request<import("./types").CycleEventResponse[]>(`/cycles/${cycleId}/events`),
+
+  publishTeam: (cycleId: number) =>
+    request<import("./types").CycleResponse>(`/cycles/${cycleId}/publish-team`, { method: "POST" }),
+
+  publishIndividuals: (cycleId: number) =>
+    request<import("./types").CycleResponse>(`/cycles/${cycleId}/publish-individuals`, { method: "POST" }),
 };
 
 // ---- Feedback ----
@@ -230,10 +213,3 @@ export const feedbackApi = {
     ),
 };
 
-export function setToken(token: string) {
-  localStorage.setItem("surface_token", token);
-}
-
-export function clearToken() {
-  localStorage.removeItem("surface_token");
-}

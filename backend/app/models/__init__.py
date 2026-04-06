@@ -18,7 +18,8 @@ class UserRole(str, enum.Enum):
 class CycleStatus(str, enum.Enum):
     open = "open"
     closed = "closed"
-    aggregated = "aggregated"
+    compiled = "compiled"
+    published = "published"
 
 
 class User(Base):
@@ -27,21 +28,15 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    supabase_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True, index=True)
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    temporary_password_plaintext: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    must_reset_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
     team = relationship("Team", back_populates="users")
     manager = relationship("User", remote_side=[id])
-
-    @property
-    def has_temporary_password(self) -> bool:
-        return bool(self.temporary_password_plaintext)
 
 
 class Team(Base):
@@ -62,10 +57,15 @@ class FeedbackCycle(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), nullable=False, index=True)
     start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False)  # open, closed, aggregated
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # open, closed, compiled, published
     participation_rants: Mapped[int | None] = mapped_column(Integer, nullable=True)
     participation_structured: Mapped[int | None] = mapped_column(Integer, nullable=True)
     summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # AI-generated from rants + structured feedback
+    # Set to now+7d on compile; cleared to null when raw data is wiped (manually or by expiry cleanup)
+    raw_data_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Granular publish flags — set independently by the manager
+    team_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    individuals_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     team = relationship("Team", back_populates="feedback_cycles")
@@ -97,6 +97,7 @@ class RantDirectedSegment(Base):
     snippet: Mapped[str] = mapped_column(Text, nullable=False)
     theme: Mapped[str] = mapped_column(String(100), nullable=False)
     sentiment: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source_rant_id: Mapped[int | None] = mapped_column(ForeignKey("rants.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -123,6 +124,10 @@ class CycleInsight(Base):
     sentiment_summary: Mapped[str] = mapped_column(String(255), nullable=False)
     count: Mapped[int] = mapped_column(Integer, nullable=False)
     example_comments: Mapped[list] = mapped_column(JSON, nullable=False)  # list of anonymized snippets
+    dominant_sentiment: Mapped[str] = mapped_column(String(20), nullable=False, default="neutral")
+    strength_score: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 1..5
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hidden_example_indices: Mapped[list] = mapped_column(JSON, nullable=False, default=list)  # manager-hidden key point indices
 
 
 class CycleReceiverSummary(Base):
@@ -139,6 +144,26 @@ class CycleReceiverSummary(Base):
     average_scores: Mapped[dict] = mapped_column(JSON, nullable=False)
     snippets_helpful: Mapped[list] = mapped_column(JSON, nullable=False)
     snippets_improvement: Mapped[list] = mapped_column(JSON, nullable=False)
+    sentiment: Mapped[str] = mapped_column(String(20), nullable=False, default="neutral")
+    strength_score: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 1..5
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hidden_helpful_indices: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    hidden_improvement_indices: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+
+class CycleEvent(Base):
+    """Immutable audit record for a feedback cycle lifecycle event."""
+    __tablename__ = "cycle_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("feedback_cycles.id"), nullable=False, index=True)
+    # null actor = system / automated event
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # Denormalised: preserved even if user is deleted
+    actor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class Action(Base):
@@ -146,7 +171,11 @@ class Action(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     cycle_id: Mapped[int] = mapped_column(ForeignKey("feedback_cycles.id"), nullable=False, index=True)
-    theme: Mapped[str] = mapped_column(String(100), nullable=False)
     manager_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    # null = team-level (visible to all after publish); set = individual action (visible only to that user)
+    receiver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     action_text: Mapped[str] = mapped_column(Text, nullable=False)
+    theme: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

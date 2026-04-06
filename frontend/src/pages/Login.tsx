@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import { ApiError } from "../api/client";
 
 const pillInput =
   "w-full px-4 py-3 rounded-full bg-white/5 border border-surface-pill-border text-surface-text placeholder-surface-text-muted focus:outline-none focus:border-surface-accent-cyan/50 focus:ring-1 focus:ring-surface-accent-cyan/30 transition-all";
@@ -19,10 +18,10 @@ export default function Login() {
     setError(null);
     setLoading(true);
     try {
-      const token = await login(email, password);
-      navigate(token.password_reset_required ? "/change-password" : "/dashboard");
+      await login(email, password);
+      navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
@@ -65,14 +64,6 @@ export default function Login() {
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
-          <p className="mt-3 text-center">
-            <Link
-              to="/forgot-password"
-              className="text-sm text-surface-text-muted hover:text-surface-accent-cyan transition-colors"
-            >
-              Forgot password?
-            </Link>
-          </p>
         </form>
       </div>
     </section>

@@ -14,15 +14,6 @@ class Settings(BaseSettings):
         description="PostgreSQL connection URL",
     )
 
-    # JWT: set SECRET_KEY in .env for production (min 32 chars recommended)
-    SECRET_KEY: str = Field(
-        default="change-me-in-production-dev-only",
-        min_length=16,
-        description="JWT signing secret; must be set via env in production",
-    )
-    ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60 * 24 * 7, description="Token expiry in minutes")
-
     # CORS: allow frontend origin only; avoid wildcards in production
     CORS_ORIGINS: list[str] = Field(
         default=["http://localhost:5173", "http://localhost:3000"],
@@ -34,6 +25,11 @@ class Settings(BaseSettings):
 
     # OpenAI (for rant de-identify and theme/sentiment). Set in .env; required for POST /feedback/rant.
     OPENAI_API_KEY: str | None = Field(default=None, description="OpenAI API key")
+
+    # Supabase — all required in production
+    SUPABASE_URL: str | None = Field(default=None, description="Supabase project URL, e.g. https://xxx.supabase.co")
+    SUPABASE_SERVICE_ROLE_KEY: str | None = Field(default=None, description="Supabase service role key (admin API access)")
+    SUPABASE_JWT_SECRET: str | None = Field(default=None, description="Supabase JWT secret for verifying access tokens")
 
     class Config:
         env_file = ".env"

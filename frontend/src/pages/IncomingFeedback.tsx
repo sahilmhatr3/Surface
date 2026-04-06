@@ -13,16 +13,8 @@ import type {
 } from "../api/types";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
+import FeedbackSubNav from "../components/FeedbackSubNav";
 
-function formatCycleLabel(c: CycleResponse) {
-  try {
-    const start = new Date(c.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const end = new Date(c.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    return `Cycle #${c.id} · ${start} – ${end}`;
-  } catch {
-    return `Cycle #${c.id}`;
-  }
-}
 
 export default function IncomingFeedback() {
   const { user, loading: authLoading } = useAuth();
@@ -84,36 +76,21 @@ export default function IncomingFeedback() {
 
   if (!user) return null;
 
+  // Auto-pick the most recent cycle that has individual feedback published
+  useEffect(() => {
+    if (cycleId || cycles.length === 0) return;
+    const best = cycles.find((c) => c.individuals_published) ?? cycles[0];
+    if (best) setCycle(best.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycles, cycleId]);
+
   return (
-    <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
-      <h1 className="text-3xl sm:text-4xl font-bold text-surface-text-strong tracking-tight mb-2">
-        Feedback about you
-      </h1>
-      <p className="text-surface-text-muted text-sm mb-8">
-        Aggregated structured feedback and open feedback directed at you. All feedback is anonymized.
-      </p>
-
-      {cycles.length > 0 && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-surface-text-muted mb-2">Cycle</label>
-          <select
-            value={cycleId ?? ""}
-            onChange={(e) => setCycle(Number(e.target.value))}
-            className="w-full max-w-md px-3 py-2 rounded-lg bg-white/5 border border-surface-pill-border text-surface-text focus:outline-none focus:border-surface-accent-cyan/50"
-          >
-            <option value="">Select a cycle…</option>
-            {cycles.map((c) => (
-              <option key={c.id} value={c.id}>
-                {formatCycleLabel(c)} · {c.status}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {!cycleId && cycles.length > 0 && (
-        <p className="text-surface-text-muted">Select a cycle to view your incoming feedback.</p>
-      )}
+    <section className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+      <FeedbackSubNav
+        activeTab="personal"
+        cycleId={cycleId}
+        isManagerView={user?.role === "manager" || user?.role === "admin"}
+      />
 
       {!cycleId && cycles.length === 0 && (
         <p className="text-surface-text-muted">No cycles yet. Check back after your team starts a feedback cycle.</p>
@@ -133,7 +110,7 @@ export default function IncomingFeedback() {
 
       {!loading && cycleId && incoming && (
         <div className="space-y-8">
-          {/* Structured feedback (scores + comments) — only after cycle aggregated */}
+          {/* Structured feedback (scores + comments) — after manager publishes */}
           <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
             <h2 className="text-lg font-semibold text-surface-text-strong mb-3">
               Structured feedback about you
@@ -179,7 +156,7 @@ export default function IncomingFeedback() {
               </>
             ) : (
               <p className="text-surface-text-muted text-sm">
-                Structured feedback is available after the cycle is closed and aggregated.
+                Structured feedback is available after your manager publishes compiled feedback for this cycle.
               </p>
             )}
           </div>
@@ -213,6 +190,36 @@ export default function IncomingFeedback() {
               </ul>
             )}
           </div>
+
+          {/* Individual actions from manager */}
+          {incoming.individual_actions && incoming.individual_actions.length > 0 && (
+            <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
+              <h2 className="text-lg font-semibold text-surface-text-strong mb-1">
+                Your action items
+              </h2>
+              <p className="text-surface-text-muted text-xs mb-4">
+                Actions your manager has published specifically for you.
+              </p>
+              <div className="space-y-3">
+                {incoming.individual_actions.map((action) => (
+                  <div
+                    key={action.id}
+                    className="flex items-start gap-3 rounded-xl border border-surface-pill-border px-4 py-3"
+                  >
+                    <span className="mt-1.5 w-2 h-2 rounded-full bg-violet-400/60 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-surface-text leading-relaxed">{action.action_text}</p>
+                      {action.theme && (
+                        <span className="inline-block mt-1.5 text-xs text-surface-text-muted bg-white/5 border border-surface-pill-border px-2 py-0.5 rounded">
+                          {action.theme}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

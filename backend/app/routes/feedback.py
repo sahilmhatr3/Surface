@@ -1,7 +1,7 @@
 """
 Feedback routes: rant (anonymous) and structured feedback. Require auth and open cycle.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -112,16 +112,88 @@ def get_my_structured_feedback(
     ]
 
 
+def _process_rant_async(
+    rant_id: int,
+    raw_text: str,
+    names: list[str],
+    teammates_name_id: list[tuple[str, int]],
+    cycle_id: int,
+) -> None:
+    """
+    AI enrichment for a submitted rant — runs after the HTTP response is already sent.
+    Opens its own DB session so the request-scoped session is not referenced.
+    Steps: de-identify → classify theme/sentiment → dissect into directed segments.
+    All steps are best-effort; a failure in one does not abort the others.
+    """
+    from app.db import SessionLocal  # local import avoids circular import at module level
+
+    db = SessionLocal()
+    try:
+        rant = db.get(Rant, rant_id)
+        if not rant:
+            return
+
+        # Step 1: de-identify raw text and classify theme + sentiment
+        try:
+            anonymized = ai_service.deidentify_text(raw_text, names)
+            theme, sentiment = ai_service.classify_theme_and_sentiment(anonymized)
+        except Exception:
+            # Fall back to storing the raw text anonymized as-is rather than losing the rant
+            anonymized = raw_text
+            theme, sentiment = "general", "neutral"
+
+        rant.anonymized_text = anonymized
+        rant.theme = theme
+        rant.sentiment = sentiment
+        db.commit()
+
+        # Step 2: dissect into per-person directed segments (best-effort)
+        if teammates_name_id:
+            try:
+                db.query(RantDirectedSegment).filter(
+                    RantDirectedSegment.source_rant_id == rant_id
+                ).delete(synchronize_session=False)
+
+                segments_data = ai_service.dissect_rant_to_directed_segments(
+                    raw_text, [n for n, _ in teammates_name_id]
+                )
+                name_to_id = {name: uid for name, uid in teammates_name_id}
+                for seg in segments_data:
+                    receiver_id = name_to_id.get(seg["receiver_name"])
+                    if receiver_id is None:
+                        continue
+                    safe_snippet = ai_service.deidentify_text(seg["snippet"], names)
+                    db.add(
+                        RantDirectedSegment(
+                            cycle_id=cycle_id,
+                            receiver_id=receiver_id,
+                            snippet=safe_snippet[:300],
+                            theme=seg["theme"],
+                            sentiment=seg["sentiment"],
+                            source_rant_id=rant_id,
+                            is_hidden=False,
+                        )
+                    )
+                db.commit()
+            except Exception:
+                db.rollback()
+    finally:
+        db.close()
+
+
 @router.post("/rant", response_model=RantResponse)
 def submit_rant(
     body: RantCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     Submit an anonymous rant for a cycle. Cycle must be open and belong to your team.
-    Text is de-identified and classified (theme/sentiment) via OpenAI; only anonymized result is stored.
-    One rant per user per cycle (submitting again overwrites for MVP).
+    The rant is persisted immediately; AI enrichment (de-identification, theme/sentiment
+    classification, directed-segment dissection) happens in the background after the
+    response is returned, so the user never waits for OpenAI.
+    One rant per user per cycle — re-submitting overwrites the previous entry.
     """
     cycle = _get_open_cycle(db, body.cycle_id, current_user)
     if not settings.OPENAI_API_KEY:
@@ -129,69 +201,45 @@ def submit_rant(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="OpenAI API key not configured",
         )
+
+    # Gather context for the background task before closing the request session
     names = _team_member_names(db, cycle.team_id)
+    teammates_name_id = _teammates_excluding_self(db, cycle.team_id, current_user.id)
     raw_text = body.text
-    try:
-        # Use de-identified text for storage and themes so example comments never contain names.
-        anonymized = ai_service.deidentify_text(raw_text, names)
-        theme, sentiment = ai_service.classify_theme_and_sentiment(anonymized)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="AI processing failed",
-        )
-    existing = db.query(Rant).filter(Rant.cycle_id == body.cycle_id, Rant.user_id == current_user.id).first()
+
+    # Persist the rant immediately with placeholder values so the user gets
+    # an instant response. The background task will overwrite these shortly.
+    existing = db.query(Rant).filter(
+        Rant.cycle_id == body.cycle_id, Rant.user_id == current_user.id
+    ).first()
     if existing:
-        existing.anonymized_text = anonymized
-        existing.theme = theme
-        existing.sentiment = sentiment
+        existing.anonymized_text = ""
+        existing.theme = "processing"
+        existing.sentiment = "processing"
         rant = existing
     else:
         rant = Rant(
             user_id=current_user.id,
             cycle_id=body.cycle_id,
             raw_text=None,
-            anonymized_text=anonymized,
-            theme=theme,
-            sentiment=sentiment,
+            anonymized_text="",
+            theme="processing",
+            sentiment="processing",
         )
         db.add(rant)
+
     db.commit()
     db.refresh(rant)
 
-    # Directed segments: run in a separate step so the rant is always saved even if this fails
-    # (e.g. rant_directed_segments table missing, or dissection error)
-    teammates_name_id = _teammates_excluding_self(db, cycle.team_id, current_user.id)
-    if teammates_name_id:
-        try:
-            db.query(RantDirectedSegment).filter(RantDirectedSegment.source_rant_id == rant.id).delete(synchronize_session=False)
-            # Use raw text for routing so the model can see names for mapping,
-            # but de-identify each snippet before storing so receivers never see names or verbatim text.
-            segments_data = ai_service.dissect_rant_to_directed_segments(raw_text, [n for n, _ in teammates_name_id])
-            name_to_id = {name: uid for name, uid in teammates_name_id}
-            for seg in segments_data:
-                receiver_id = name_to_id.get(seg["receiver_name"])
-                if receiver_id is None:
-                    continue
-                # De-identify and lightly rewrite the snippet so it becomes a short key phrase/sentence
-                # without any names or sharp identifiers.
-                safe_snippet = ai_service.deidentify_text(seg["snippet"], names)
-                db.add(
-                    RantDirectedSegment(
-                        cycle_id=body.cycle_id,
-                        receiver_id=receiver_id,
-                        snippet=safe_snippet[:300],
-                        theme=seg["theme"],
-                        sentiment=seg["sentiment"],
-                        source_rant_id=rant.id,
-                    )
-                )
-            db.commit()
-        except Exception:
-            db.rollback()
-            # Rant is already saved; segments are best-effort
+    background_tasks.add_task(
+        _process_rant_async,
+        rant_id=rant.id,
+        raw_text=raw_text,
+        names=names,
+        teammates_name_id=teammates_name_id,
+        cycle_id=body.cycle_id,
+    )
+
     return rant
 
 

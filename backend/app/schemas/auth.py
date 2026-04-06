@@ -4,7 +4,6 @@ Passwords are never included in responses.
 """
 from pydantic import BaseModel, EmailStr, Field
 
-
 # Minimum length per common security guidance; cap to limit DoS via huge inputs
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
@@ -29,11 +28,10 @@ class LoginRequest(BaseModel):
 
 
 class Token(BaseModel):
-    """JWT token returned after successful login or register."""
+    """JWT token returned after successful login."""
 
     access_token: str
     token_type: str = "bearer"
-    password_reset_required: bool = False
 
 
 class UserResponse(BaseModel):
@@ -45,14 +43,12 @@ class UserResponse(BaseModel):
     role: str
     team_id: int | None
     manager_id: int | None
-    must_reset_password: bool = False
-    has_temporary_password: bool = False
 
     model_config = {"from_attributes": True}
 
 
 class ChangePasswordRequest(BaseModel):
-    """Current password + new password for first-time or voluntary reset."""
+    """Current password + new password for voluntary reset."""
 
     current_password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
     new_password: str = Field(
@@ -66,25 +62,3 @@ class RegisterResponse(BaseModel):
     user: UserResponse
     access_token: str
     token_type: str = "bearer"
-
-
-class ForgotPasswordRequest(BaseModel):
-    """Request OTP for password reset. Always returns success to avoid leaking account existence."""
-
-    email: EmailStr
-
-
-class VerifyResetOtpRequest(BaseModel):
-    """Verify OTP sent to email; returns short-lived reset token."""
-
-    email: EmailStr
-    otp: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
-
-
-class ResetPasswordRequest(BaseModel):
-    """Set new password using the token from verify-reset-otp."""
-
-    reset_token: str = Field(..., min_length=1)
-    new_password: str = Field(
-        ..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH
-    )
