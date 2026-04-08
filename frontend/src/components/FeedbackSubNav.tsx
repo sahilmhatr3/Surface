@@ -11,6 +11,8 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { cyclesApi } from "../api/client";
 import type { CycleResponse } from "../api/types";
 
@@ -30,15 +32,16 @@ function tabHref(tab: FeedbackTab, cycleId?: number | null): string {
   return cycleId ? `/insights?cycle=${cycleId}&tab=review` : "/insights?tab=review";
 }
 
-function formatCycleOption(c: CycleResponse): string {
+function formatCycleOption(c: CycleResponse, locale: string, t: TFunction): string {
   try {
-    const end = new Date(c.end_date).toLocaleDateString("en-US", {
+    const loc = locale.startsWith("de") ? "de-DE" : "en-US";
+    const end = new Date(c.end_date).toLocaleDateString(loc, {
       month: "short",
       year: "numeric",
     });
-    return `Cycle #${c.id} · ${end}`;
+    return t("feedbackSubNav.cycleOption", { id: c.id, date: end });
   } catch {
-    return `Cycle #${c.id}`;
+    return t("feedback.cycle", { id: c.id });
   }
 }
 
@@ -47,6 +50,7 @@ export default function FeedbackSubNav({
   cycleId,
   isManagerView = false,
 }: FeedbackSubNavProps) {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [cycles, setCycles] = useState<CycleResponse[]>([]);
 
@@ -66,20 +70,20 @@ export default function FeedbackSubNav({
   const tabs: { key: FeedbackTab; label: string }[] = [];
 
   if (isOpen) {
-    tabs.push({ key: "submit", label: "Submit" });
+    tabs.push({ key: "submit", label: t("feedbackSubNav.submit") });
   }
 
   if (isPublishedAny) {
     if (cycle?.team_published) {
-      tabs.push({ key: "team", label: "Team feedback" });
+      tabs.push({ key: "team", label: t("feedbackSubNav.teamFeedback") });
     }
     if (cycle?.individuals_published) {
-      tabs.push({ key: "personal", label: "Personal feedback" });
+      tabs.push({ key: "personal", label: t("feedbackSubNav.personalFeedback") });
     }
   }
 
   if (isManagerView && (isCompiled || isPublishedAny)) {
-    tabs.push({ key: "review", label: "Review" });
+    tabs.push({ key: "review", label: t("feedbackSubNav.review") });
   }
 
   // Cycle picker: navigate to same tab type with new cycle
@@ -125,10 +129,10 @@ export default function FeedbackSubNav({
           onChange={handleCycleChange}
           className="text-xs bg-white/5 border border-surface-pill-border rounded-lg px-2.5 py-1.5 text-surface-text focus:outline-none focus:border-surface-accent-cyan/40 mb-px"
         >
-          <option value="">Select cycle…</option>
+          <option value="">{t("feedbackSubNav.selectCycle")}</option>
           {cycles.map((c) => (
             <option key={c.id} value={c.id}>
-              {formatCycleOption(c)}
+              {formatCycleOption(c, i18n.language, t)}
             </option>
           ))}
         </select>

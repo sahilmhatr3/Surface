@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi } from "../api/client";
 import type {
@@ -17,6 +18,7 @@ import FeedbackSubNav from "../components/FeedbackSubNav";
 
 
 export default function IncomingFeedback() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -56,15 +58,22 @@ export default function IncomingFeedback() {
       .getIncomingFeedback(cycleId)
       .then(setIncoming)
       .catch((e) => {
-        setError(e instanceof Error ? e.message : "Failed to load");
+        setError(e instanceof Error ? e.message : t("common.failedToLoad"));
         setIncoming(null);
       })
       .finally(() => setLoading(false));
-  }, [user, cycleId]);
+  }, [user, cycleId, t]);
 
   const setCycle = (id: number) => {
     setSearchParams({ cycle: String(id) });
   };
+
+  // Auto-pick the most recent cycle that has individual feedback published
+  useEffect(() => {
+    if (!user || cycleId || cycles.length === 0) return;
+    const best = cycles.find((c) => c.individuals_published) ?? cycles[0];
+    if (best) setSearchParams({ cycle: String(best.id) });
+  }, [user, cycles, cycleId, setSearchParams]);
 
   if (authLoading) {
     return (
@@ -76,14 +85,6 @@ export default function IncomingFeedback() {
 
   if (!user) return null;
 
-  // Auto-pick the most recent cycle that has individual feedback published
-  useEffect(() => {
-    if (cycleId || cycles.length === 0) return;
-    const best = cycles.find((c) => c.individuals_published) ?? cycles[0];
-    if (best) setCycle(best.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cycles, cycleId]);
-
   return (
     <section className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
       <FeedbackSubNav
@@ -93,7 +94,7 @@ export default function IncomingFeedback() {
       />
 
       {!cycleId && cycles.length === 0 && (
-        <p className="text-surface-text-muted">No cycles yet. Check back after your team starts a feedback cycle.</p>
+        <p className="text-surface-text-muted">{t("incomingFeedback.noCycles")}</p>
       )}
 
       {error && (
@@ -113,7 +114,7 @@ export default function IncomingFeedback() {
           {/* Structured feedback (scores + comments) — after manager publishes */}
           <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
             <h2 className="text-lg font-semibold text-surface-text-strong mb-3">
-              Structured feedback about you
+              {t("incomingFeedback.structuredTitle")}
             </h2>
             {incoming.structured ? (
               <>
@@ -125,7 +126,7 @@ export default function IncomingFeedback() {
                   <>
                     {Object.keys(incoming.structured.average_scores).length > 0 && (
                       <p className="text-surface-text text-sm mb-2">
-                        Average scores:{" "}
+                        {t("incomingFeedback.averageScores")}{" "}
                         {Object.entries(incoming.structured.average_scores)
                           .map(([k, v]) => `${k}: ${v}`)
                           .join(", ")}
@@ -133,7 +134,9 @@ export default function IncomingFeedback() {
                     )}
                     {incoming.structured.comment_snippets_helpful.length > 0 && (
                       <div className="mt-3">
-                        <span className="text-surface-text-muted text-xs uppercase tracking-wider">What helped</span>
+                        <span className="text-surface-text-muted text-xs uppercase tracking-wider">
+                          {t("incomingFeedback.whatHelped")}
+                        </span>
                         <ul className="mt-1 space-y-1 text-sm text-surface-text">
                           {incoming.structured.comment_snippets_helpful.map((s, i) => (
                             <li key={i} className="italic">"{s}"</li>
@@ -143,7 +146,9 @@ export default function IncomingFeedback() {
                     )}
                     {incoming.structured.comment_snippets_improvement.length > 0 && (
                       <div className="mt-3">
-                        <span className="text-surface-text-muted text-xs uppercase tracking-wider">Could improve</span>
+                        <span className="text-surface-text-muted text-xs uppercase tracking-wider">
+                          {t("incomingFeedback.couldImprove")}
+                        </span>
                         <ul className="mt-1 space-y-1 text-sm text-surface-text">
                           {incoming.structured.comment_snippets_improvement.map((s, i) => (
                             <li key={i} className="italic">"{s}"</li>
@@ -155,25 +160,21 @@ export default function IncomingFeedback() {
                 )}
               </>
             ) : (
-              <p className="text-surface-text-muted text-sm">
-                Structured feedback is available after your manager publishes compiled feedback for this cycle.
-              </p>
+              <p className="text-surface-text-muted text-sm">{t("incomingFeedback.structuredPending")}</p>
             )}
           </div>
 
           {/* Directed open feedback (rant segments) */}
           <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
             <h2 className="text-lg font-semibold text-surface-text-strong mb-3">
-              Open feedback directed at you
+              {t("incomingFeedback.openTitle")}
             </h2>
             {incoming.directed_rant_below_threshold_note ? (
               <p className="text-surface-text-muted text-sm">
                 {incoming.directed_rant_below_threshold_note}
               </p>
             ) : incoming.directed_rant_segments.length === 0 ? (
-              <p className="text-surface-text-muted text-sm">
-                No open feedback was directed at you in this cycle.
-              </p>
+              <p className="text-surface-text-muted text-sm">{t("incomingFeedback.noDirected")}</p>
             ) : (
               <ul className="space-y-3">
                 {incoming.directed_rant_segments.map((seg, i) => (
@@ -195,11 +196,9 @@ export default function IncomingFeedback() {
           {incoming.individual_actions && incoming.individual_actions.length > 0 && (
             <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
               <h2 className="text-lg font-semibold text-surface-text-strong mb-1">
-                Your action items
+                {t("incomingFeedback.actionsTitle")}
               </h2>
-              <p className="text-surface-text-muted text-xs mb-4">
-                Actions your manager has published specifically for you.
-              </p>
+              <p className="text-surface-text-muted text-xs mb-4">{t("incomingFeedback.actionsSubtitle")}</p>
               <div className="space-y-3">
                 {incoming.individual_actions.map((action) => (
                   <div

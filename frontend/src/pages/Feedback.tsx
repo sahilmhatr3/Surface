@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi, feedbackApi } from "../api/client";
 import type {
@@ -82,39 +83,44 @@ function BackArrow() {
 
 // ─── cycle list helpers ───────────────────────────────────────────────────────
 
-function formatDateRange(c: CycleResponse): string {
+function formatDateRange(c: CycleResponse, locale: string, cycleFallback: string): string {
   try {
     const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-    const start = new Date(c.start_date).toLocaleDateString("en-US", opts);
-    const end = new Date(c.end_date).toLocaleDateString("en-US", {
+    const start = new Date(c.start_date).toLocaleDateString(locale, opts);
+    const end = new Date(c.end_date).toLocaleDateString(locale, {
       ...opts,
       year: "numeric",
     });
     return `${start} – ${end}`;
   } catch {
-    return `Cycle #${c.id}`;
+    return cycleFallback;
   }
 }
 
-function StatusBadge({ status, teamPublished, individualsPublished }: {
+function CycleStatusBadge({
+  status,
+  teamPublished,
+  individualsPublished,
+}: {
   status: string;
   teamPublished?: boolean;
   individualsPublished?: boolean;
 }) {
+  const { t } = useTranslation();
   let label = status;
   let cls = "bg-white/5 text-surface-text-muted border-white/10";
 
   if (status === "open") {
-    label = "Open";
+    label = t("feedback.status.open");
     cls = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
   } else if (status === "closed") {
-    label = "Closed";
+    label = t("feedback.status.closed");
     cls = "bg-white/5 text-surface-text-muted border-white/10";
   } else if (status === "compiled") {
-    label = "In review";
+    label = t("feedback.status.compiled");
     cls = "bg-amber-500/10 text-amber-400 border-amber-500/20";
   } else if (status === "published" || teamPublished || individualsPublished) {
-    label = "Published";
+    label = t("feedback.status.published");
     cls = "bg-sky-500/10 text-sky-400 border-sky-500/20";
   }
 
@@ -144,6 +150,7 @@ const DEFAULT_STRUCTURED: StructuredEntry = {
 // ─── component ────────────────────────────────────────────────────────────────
 
 export default function Feedback() {
+  const { t, i18n } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -198,12 +205,12 @@ export default function Feedback() {
     setLoading(true);
 
     Promise.all([cyclesApi.listCycles(), feedbackApi.getTeammates()])
-      .then(async ([c, t]) => {
+      .then(async ([c, teammateList]) => {
         setCycles(c);
-        setTeammates(t);
+        setTeammates(teammateList);
         setStructured((prev) => {
           const next = { ...prev };
-          t.forEach((teammate) => {
+          teammateList.forEach((teammate) => {
             if (!(teammate.id in next))
               next[teammate.id] = {
                 support: 3,
@@ -238,15 +245,17 @@ export default function Feedback() {
         setLastSavedStructured((prev) => ({ ...prev, ...entries }));
         setSavedStructuredReceivers(new Set(savedList.map((i) => i.receiver_id)));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : t("common.failedToLoad"))
+      )
       .finally(() => setLoading(false));
-  }, [user, authLoading, navigate, urlCycleId]);
+  }, [user, authLoading, navigate, urlCycleId, t]);
 
   // ─── handlers ───────────────────────────────────────────────────────────────
 
   const toggleTag = (tag: string) => {
     setRantTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+      prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]
     );
   };
 
@@ -271,7 +280,7 @@ export default function Feedback() {
       });
       setRantDone(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to submit rant");
+      setError(e instanceof Error ? e.message : t("feedback.failedSubmitRant"));
     } finally {
       setRantSubmitting(false);
     }
@@ -302,7 +311,7 @@ export default function Feedback() {
       setSavedStructuredReceivers((prev) => new Set(prev).add(teammateId));
       setStructuredCollapsedIds((prev) => new Set(prev).add(teammateId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save feedback");
+      setError(e instanceof Error ? e.message : t("feedback.failedSaveFeedback"));
     } finally {
       setStructuredSavingId(null);
     }
@@ -368,11 +377,9 @@ export default function Feedback() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
         <div className="mb-8">
           <h1 className="text-2xl font-semibold text-surface-text-strong tracking-tight">
-            Feedback
+            {t("feedback.title")}
           </h1>
-          <p className="text-sm text-surface-text-muted mt-1">
-            Your feedback history and open cycles. Select one to get started or view results.
-          </p>
+          <p className="text-sm text-surface-text-muted mt-1">{t("feedback.subtitle")}</p>
         </div>
 
         {error && (
@@ -382,13 +389,9 @@ export default function Feedback() {
         )}
 
         {!user.team_id ? (
-          <p className="text-surface-text-muted text-sm">
-            You&apos;re not in a team yet. Ask an admin to assign you to a team.
-          </p>
+          <p className="text-surface-text-muted text-sm">{t("feedback.noTeam")}</p>
         ) : cycles.length === 0 ? (
-          <p className="text-surface-text-muted text-sm">
-            No feedback cycles yet. Ask your admin to create one.
-          </p>
+          <p className="text-surface-text-muted text-sm">{t("feedback.noCycles")}</p>
         ) : (
           <div className="space-y-2">
             {cycles.map((c) => {
@@ -406,16 +409,16 @@ export default function Feedback() {
                   {/* Left: cycle info */}
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-surface-text-strong">
-                      Cycle #{c.id}
+                      {t("feedback.cycle", { id: c.id })}
                     </p>
                     <p className="text-xs text-surface-text-muted mt-0.5">
-                      {formatDateRange(c)}
+                      {formatDateRange(c, i18n.language, t("feedback.cycle", { id: c.id }))}
                     </p>
                   </div>
 
                   {/* Right: status + actions */}
                   <div className="flex items-center gap-2.5 shrink-0 flex-wrap justify-end">
-                    <StatusBadge
+                    <CycleStatusBadge
                       status={c.status}
                       teamPublished={c.team_published}
                       individualsPublished={c.individuals_published}
@@ -426,13 +429,13 @@ export default function Feedback() {
                         to={`/feedback?cycle=${c.id}`}
                         className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
                       >
-                        Give feedback
+                        {t("feedback.giveFeedback")}
                       </Link>
                     )}
 
                     {isClosed && (
                       <span className="text-xs text-surface-text-muted px-2">
-                        Awaiting compilation
+                        {t("feedback.awaitingCompilation")}
                       </span>
                     )}
 
@@ -441,13 +444,13 @@ export default function Feedback() {
                         to={`/insights?cycle=${c.id}`}
                         className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
                       >
-                        Review pending
+                        {t("feedback.reviewPending")}
                       </Link>
                     )}
 
                     {isCompiled && !isManagerOrAdmin && (
                       <span className="text-xs text-surface-text-muted px-2">
-                        Under review
+                        {t("feedback.underReview")}
                       </span>
                     )}
 
@@ -456,7 +459,7 @@ export default function Feedback() {
                         to={`/insights?cycle=${c.id}`}
                         className="px-3.5 py-1.5 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
                       >
-                        View insights
+                        {t("feedback.viewInsights")}
                       </Link>
                     )}
                   </div>
@@ -482,7 +485,7 @@ export default function Feedback() {
         className="inline-flex items-center gap-1.5 text-sm text-surface-text-muted hover:text-surface-text transition-colors mb-8"
       >
         <BackArrow />
-        All cycles
+        {t("feedback.allCycles")}
       </Link>
 
       {error && (
@@ -494,9 +497,7 @@ export default function Feedback() {
       {/* Cycle not found */}
       {!selectedCycle && !loading && (
         <div className={`${cardClass} p-6`}>
-          <p className="text-surface-text-muted text-sm">
-            Cycle not found. It may have been removed or you may not have access.
-          </p>
+          <p className="text-surface-text-muted text-sm">{t("feedback.cycleNotFound")}</p>
         </div>
       )}
 
@@ -506,17 +507,20 @@ export default function Feedback() {
           {/* Page header */}
           <div className="mb-8">
             <h1 className="text-2xl font-semibold text-surface-text-strong tracking-tight">
-              Submit feedback
+              {t("feedback.submitTitle")}
             </h1>
             <p className="text-sm text-surface-text-muted mt-1">
-              Cycle #{selectedCycle.id} &middot; {formatDateRange(selectedCycle)}
+              {t("feedback.cycle", { id: selectedCycle.id })} &middot;{" "}
+              {formatDateRange(
+                selectedCycle,
+                i18n.language,
+                t("feedback.cycle", { id: selectedCycle.id })
+              )}
             </p>
           </div>
 
           {!user.team_id ? (
-            <p className="text-surface-text-muted text-sm">
-              You&apos;re not in a team yet. Ask an admin to assign you to a team.
-            </p>
+            <p className="text-surface-text-muted text-sm">{t("feedback.noTeam")}</p>
           ) : (
             <div className="space-y-4">
 
@@ -529,12 +533,10 @@ export default function Feedback() {
                 >
                   <div>
                     <h2 className="text-xl font-semibold text-surface-text-strong">
-                      Anonymous rant
+                      {t("feedback.anonymousRant")}
                     </h2>
                     <p className="text-sm text-surface-text-muted mt-0.5">
-                      {rantDone
-                        ? "Submitted"
-                        : "Use this space to say what you really think about work; your words are anonymized and never traceable back to you"}
+                      {rantDone ? t("feedback.rantTeaserDone") : t("feedback.rantTeaser")}
                     </p>
                   </div>
                   <ChevronDown open={rantSectionOpen} />
@@ -545,19 +547,15 @@ export default function Feedback() {
                     {rantDone ? (
                       <div className="space-y-2 pt-4">
                         <p className="text-surface-text-strong font-medium">
-                          Feedback submitted.
+                          {t("feedback.rantSubmittedTitle")}
                         </p>
-                        <p className="text-sm text-surface-text-muted">
-                          Your response has been recorded. It will be processed and appear in cycle
-                          themes and the compiled summary after the cycle closes. If you mentioned
-                          teammates, relevant snippets may appear in their incoming feedback.
-                        </p>
+                        <p className="text-sm text-surface-text-muted">{t("feedback.rantSubmittedBody")}</p>
                       </div>
                     ) : (
                       <>
                         <p className="mt-4 text-sm text-surface-text-muted" />
                         <textarea
-                          placeholder="Share what's really on your mind at work"
+                          placeholder={t("feedback.rantPlaceholder")}
                           value={rantText}
                           onChange={(e) => setRantText(e.target.value)}
                           className={`${inputClass} min-h-[120px] resize-y mt-3`}
@@ -576,11 +574,11 @@ export default function Feedback() {
                                   : "border-surface-pill-border text-surface-text-muted hover:border-white/30"
                               }`}
                             >
-                              {tag}
+                              {t(`feedback.tags.${tag}`, { defaultValue: tag })}
                             </button>
                           ))}
                           {/* Custom tags already added */}
-                          {rantTags.filter((t) => !RANT_TAGS.includes(t)).map((tag) => (
+                          {rantTags.filter((tg) => !RANT_TAGS.includes(tg)).map((tag) => (
                             <span
                               key={tag}
                               className="flex items-center gap-1 px-3 py-1 rounded-full text-sm border border-surface-accent-cyan bg-surface-accent-cyan/20 text-surface-text-strong"
@@ -589,10 +587,10 @@ export default function Feedback() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setRantTags((prev) => prev.filter((t) => t !== tag))
+                                  setRantTags((prev) => prev.filter((x) => x !== tag))
                                 }
                                 className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none"
-                                aria-label={`Remove tag ${tag}`}
+                                aria-label={t("feedback.removeTagAria", { tag })}
                               >
                                 ×
                               </button>
@@ -616,7 +614,7 @@ export default function Feedback() {
                                 }
                               }}
                               onBlur={addCustomTag}
-                              placeholder="Tag name"
+                              placeholder={t("feedback.tagNamePlaceholder")}
                               maxLength={30}
                               className="px-3 py-1 rounded-full text-sm border border-surface-accent-cyan/50 bg-white/5 text-surface-text placeholder-surface-text-muted/50 focus:outline-none focus:border-surface-accent-cyan w-28"
                             />
@@ -624,7 +622,7 @@ export default function Feedback() {
                             <button
                               type="button"
                               onClick={() => setShowCustomTagInput(true)}
-                              title="Add custom tag"
+                              title={t("feedback.addCustomTag")}
                               className="w-7 h-7 flex items-center justify-center rounded-full border border-surface-pill-border text-surface-text-muted hover:border-white/30 hover:text-surface-text transition-all"
                             >
                               <svg
@@ -649,7 +647,7 @@ export default function Feedback() {
                           disabled={rantSubmitting || !rantText.trim()}
                           className={`${btnClass} mt-4`}
                         >
-                          {rantSubmitting ? "Submitting…" : "Submit rant"}
+                          {rantSubmitting ? t("feedback.submitting") : t("feedback.submitRant")}
                         </button>
                       </>
                     )}
@@ -666,14 +664,17 @@ export default function Feedback() {
                 >
                   <div>
                     <h2 className="text-xl font-semibold text-surface-text-strong">
-                      Structured feedback
+                      {t("feedback.structuredTitle")}
                     </h2>
                     <p className="text-sm text-surface-text-muted mt-0.5">
                       {structuredAllDone
-                        ? "All done"
+                        ? t("feedback.structuredAllDone")
                         : teammates.length === 0
-                          ? "No teammates yet"
-                          : `Rate each teammate (1–5) and save per person. ${structuredSavedCount}/${structuredTotalCount} saved.`}
+                          ? t("feedback.structuredNoTeammates")
+                          : t("feedback.structuredProgress", {
+                              saved: structuredSavedCount,
+                              total: structuredTotalCount,
+                            })}
                     </p>
                   </div>
                   <ChevronDown open={structuredSectionOpen} />
@@ -682,35 +683,36 @@ export default function Feedback() {
                 {structuredSectionOpen && (
                   <div className="px-6 pb-6 pt-0 border-t border-surface-pill-border">
                     {teammates.length === 0 ? (
-                      <p className="text-surface-text-muted text-sm pt-4">
-                        No other team members in your team yet.
-                      </p>
+                      <p className="text-surface-text-muted text-sm pt-4">{t("feedback.noOtherMembers")}</p>
                     ) : (
                       <>
                         {/* Vertical progress: dots + connecting line along the left */}
                         <div className="flex gap-4 mt-4">
                           <div
                             className="flex flex-col items-center shrink-0 pt-1"
-                            aria-label={`Progress ${structuredSavedCount} of ${structuredTotalCount}`}
+                            aria-label={t("feedback.progressAria", {
+                              saved: structuredSavedCount,
+                              total: structuredTotalCount,
+                            })}
                           >
-                            {teammates.map((t, i) => (
-                              <div key={t.id} className="flex flex-col items-center">
+                            {teammates.map((tm, i) => (
+                              <div key={tm.id} className="flex flex-col items-center">
                                 <div
                                   className={`w-3 h-3 rounded-full border-2 transition-all shrink-0 ${
-                                    savedStructuredReceivers.has(t.id)
+                                    savedStructuredReceivers.has(tm.id)
                                       ? "bg-surface-accent-cyan border-surface-accent-cyan"
                                       : "border-surface-pill-border bg-transparent"
                                   }`}
                                   title={
-                                    savedStructuredReceivers.has(t.id)
-                                      ? `Saved: ${t.name}`
-                                      : t.name
+                                    savedStructuredReceivers.has(tm.id)
+                                      ? t("feedback.savedNamed", { name: tm.name })
+                                      : tm.name
                                   }
                                 />
                                 {i < teammates.length - 1 && (
                                   <div
                                     className={`w-0.5 h-6 min-h-[24px] ${
-                                      savedStructuredReceivers.has(t.id)
+                                      savedStructuredReceivers.has(tm.id)
                                         ? "bg-surface-accent-cyan/60"
                                         : "bg-surface-pill-border/50"
                                     }`}
@@ -721,13 +723,13 @@ export default function Feedback() {
                           </div>
 
                           <div className="flex-1 min-w-0 space-y-3">
-                            {teammates.map((t) => {
-                              const saved = savedStructuredReceivers.has(t.id);
-                              const collapsed = structuredCollapsedIds.has(t.id);
-                              const s = structured[t.id];
+                            {teammates.map((tm) => {
+                              const saved = savedStructuredReceivers.has(tm.id);
+                              const collapsed = structuredCollapsedIds.has(tm.id);
+                              const s = structured[tm.id];
                               return (
                                 <div
-                                  key={t.id}
+                                  key={tm.id}
                                   className={`border rounded-xl overflow-hidden transition-all ${
                                     saved
                                       ? "border-surface-accent-cyan/40 bg-surface-accent-cyan/5"
@@ -737,32 +739,36 @@ export default function Feedback() {
                                   {saved && collapsed ? (
                                     <button
                                       type="button"
-                                      onClick={() => toggleStructuredCardCollapse(t.id)}
+                                      onClick={() => toggleStructuredCardCollapse(tm.id)}
                                       className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5"
                                     >
                                       <span className="flex items-center justify-center w-7 h-7 rounded-full bg-surface-accent-cyan/20 text-surface-accent-cyan shrink-0">
                                         <CheckIcon />
                                       </span>
                                       <span className="font-medium text-surface-text-strong">
-                                        {t.name}
+                                        {tm.name}
                                       </span>
                                       <span className="text-sm text-surface-text-muted">
-                                        Support {s?.support ?? "—"}, Communication{" "}
-                                        {s?.communication ?? "—"}
+                                        {t("feedback.supportCommaComm", {
+                                          s: s?.support ?? "—",
+                                          c: s?.communication ?? "—",
+                                        })}
                                       </span>
                                     </button>
                                   ) : (
                                     <>
                                       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-surface-pill-border/50">
                                         <span className="font-medium text-surface-text-strong">
-                                          {t.name}
+                                          {tm.name}
                                         </span>
                                         {saved && (
                                           <button
                                             type="button"
-                                            onClick={() => toggleStructuredCardCollapse(t.id)}
+                                            onClick={() => toggleStructuredCardCollapse(tm.id)}
                                             className="p-1 text-surface-text-muted hover:text-surface-accent-cyan"
-                                            aria-label={collapsed ? "Expand" : "Collapse"}
+                                            aria-label={
+                                              collapsed ? t("common.expand") : t("common.collapse")
+                                            }
                                           >
                                             {collapsed ? <PlusIcon /> : <MinusIcon />}
                                           </button>
@@ -772,13 +778,13 @@ export default function Feedback() {
                                         <div className="grid grid-cols-2 gap-4">
                                           <div>
                                             <label className="block text-xs text-surface-text-muted mb-1">
-                                              Support (1–5)
+                                              {t("feedback.supportScore")}
                                             </label>
                                             <select
                                               value={s?.support ?? 3}
                                               onChange={(e) =>
                                                 updateStructured(
-                                                  t.id,
+                                                  tm.id,
                                                   "support",
                                                   parseInt(e.target.value, 10)
                                                 )
@@ -795,13 +801,13 @@ export default function Feedback() {
                                           </div>
                                           <div>
                                             <label className="block text-xs text-surface-text-muted mb-1">
-                                              Communication (1–5)
+                                              {t("feedback.communicationScore")}
                                             </label>
                                             <select
                                               value={s?.communication ?? 3}
                                               onChange={(e) =>
                                                 updateStructured(
-                                                  t.id,
+                                                  tm.id,
                                                   "communication",
                                                   parseInt(e.target.value, 10)
                                                 )
@@ -819,14 +825,14 @@ export default function Feedback() {
                                         </div>
                                         <div>
                                           <label className="block text-xs text-surface-text-muted mb-1">
-                                            What helped?
+                                            {t("feedback.whatHelped")}
                                           </label>
                                           <textarea
-                                            placeholder="What did this person do well?"
+                                            placeholder={t("feedback.whatHelpedPlaceholder")}
                                             value={s?.comments_helpful ?? ""}
                                             onChange={(e) =>
                                               updateStructured(
-                                                t.id,
+                                                tm.id,
                                                 "comments_helpful",
                                                 e.target.value
                                               )
@@ -838,14 +844,14 @@ export default function Feedback() {
                                         </div>
                                         <div>
                                           <label className="block text-xs text-surface-text-muted mb-1">
-                                            What could improve?
+                                            {t("feedback.whatImprove")}
                                           </label>
                                           <textarea
-                                            placeholder="Suggestions for improvement"
+                                            placeholder={t("feedback.improvePlaceholder")}
                                             value={s?.comments_improvement ?? ""}
                                             onChange={(e) =>
                                               updateStructured(
-                                                t.id,
+                                                tm.id,
                                                 "comments_improvement",
                                                 e.target.value
                                               )
@@ -859,17 +865,17 @@ export default function Feedback() {
                                           <button
                                             type="button"
                                             onClick={() =>
-                                              handleSaveStructuredForPerson(t.id)
+                                              handleSaveStructuredForPerson(tm.id)
                                             }
                                             disabled={
-                                              structuredSavingId === t.id ||
-                                              !hasStructuredChanges(t.id)
+                                              structuredSavingId === tm.id ||
+                                              !hasStructuredChanges(tm.id)
                                             }
                                             className={`${btnClass} inline-flex items-center gap-2`}
                                           >
-                                            {structuredSavingId === t.id
-                                              ? "Saving…"
-                                              : "Save"}
+                                            {structuredSavingId === tm.id
+                                              ? t("common.saving")
+                                              : t("common.save")}
                                           </button>
                                         )}
                                       </div>
@@ -882,7 +888,7 @@ export default function Feedback() {
                         </div>
                         {structuredAllDone && (
                           <p className="text-surface-accent-cyan text-sm mt-4">
-                            All structured feedback saved.
+                            {t("feedback.allStructuredSaved")}
                           </p>
                         )}
                       </>
@@ -914,10 +920,9 @@ export default function Feedback() {
             </svg>
           </div>
           <div>
-            <p className="font-medium text-surface-text-strong">This cycle has ended</p>
+            <p className="font-medium text-surface-text-strong">{t("feedback.closedTitle")}</p>
             <p className="text-sm text-surface-text-muted mt-1 max-w-sm">
-              Submissions are closed. Results will be available once your manager compiles
-              and publishes the feedback.
+              {t("feedback.closedBody")}
             </p>
           </div>
         </div>
@@ -943,12 +948,14 @@ export default function Feedback() {
           </div>
           <div>
             <p className="font-medium text-surface-text-strong">
-              {isManagerOrAdmin ? "Ready for your review" : "Feedback is being reviewed"}
+              {isManagerOrAdmin
+                ? t("feedback.compiledManagerTitle")
+                : t("feedback.compiledEmployeeTitle")}
             </p>
             <p className="text-sm text-surface-text-muted mt-1 max-w-sm">
               {isManagerOrAdmin
-                ? "The compiled results are ready. Head to the insights panel to review and publish."
-                : "Your manager is reviewing the compiled feedback. Results will be published soon."}
+                ? t("feedback.compiledManagerBody")
+                : t("feedback.compiledEmployeeBody")}
             </p>
           </div>
           {isManagerOrAdmin && (
@@ -956,7 +963,7 @@ export default function Feedback() {
               to={`/insights?cycle=${selectedCycle.id}`}
               className="mt-2 px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
             >
-              Go to review panel
+              {t("feedback.goToReview")}
             </Link>
           )}
         </div>
@@ -984,16 +991,16 @@ export default function Feedback() {
             </svg>
           </div>
           <div>
-            <p className="font-medium text-surface-text-strong">Results are available</p>
+            <p className="font-medium text-surface-text-strong">{t("feedback.publishedTitle")}</p>
             <p className="text-sm text-surface-text-muted mt-1 max-w-sm">
-              Your manager has published the feedback for this cycle.
+              {t("feedback.publishedBody")}
             </p>
           </div>
           <Link
             to={`/insights?cycle=${selectedCycle.id}`}
             className="mt-2 px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 transition-all"
           >
-            View insights
+            {t("feedback.viewInsights")}
           </Link>
         </div>
       )}

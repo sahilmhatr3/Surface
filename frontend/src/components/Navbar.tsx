@@ -6,8 +6,10 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi } from "../api/client";
+import LanguageSwitcher from "./LanguageSwitcher";
 
 // ---------- icons ----------
 
@@ -70,6 +72,7 @@ interface NavbarProps {
 }
 
 export default function Navbar({ productName = "Surface" }: NavbarProps) {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
@@ -137,7 +140,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
         {showDot && (
           <span
             className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-sky-400"
-            aria-label="Open cycle available"
+            aria-label={t("nav.openCycleAvailable")}
           />
         )}
       </Link>
@@ -146,13 +149,13 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
 
   const navLinks = user ? (
     <>
-      {navLink("/dashboard", "Dashboard")}
-      {navLink("/feedback", "Feedback")}
+      {navLink("/dashboard", t("nav.dashboard"))}
+      {navLink("/feedback", t("nav.feedback"))}
       {user.role === "admin" && (
         <>
           <span className="w-px h-3.5 bg-white/10 mx-1 shrink-0" aria-hidden />
-          {navLink("/admin-controls", "Admin")}
-          {navLink("/teams", "Teams")}
+          {navLink("/admin-controls", t("nav.admin"))}
+          {navLink("/teams", t("nav.teams"))}
         </>
       )}
     </>
@@ -218,6 +221,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
 
         {/* RIGHT */}
         <div className="flex items-center gap-1.5">
+          <LanguageSwitcher />
           {user ? (
             <>
               {/* Full user chip — visible when NOT scrolled */}
@@ -234,7 +238,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
                 </span>
                 <span className="text-xs text-surface-text hidden sm:inline whitespace-nowrap">{user.name}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium capitalize hidden sm:inline whitespace-nowrap ${ROLE_COLORS[user.role] ?? ROLE_COLORS.employee}`}>
-                  {user.role}
+                  {t(`common.roles.${user.role}`, { defaultValue: user.role })}
                 </span>
               </div>
 
@@ -242,7 +246,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
               <button
                 type="button"
                 onClick={logout}
-                title="Log out"
+                title={t("nav.logout")}
                 className={[
                   "p-1.5 rounded-full text-surface-text-muted/40 hover:text-surface-text-muted hover:bg-white/5 transition-all duration-300",
                   scrolled ? "opacity-0 pointer-events-none w-0 overflow-hidden p-0" : "opacity-100",
@@ -269,7 +273,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
               <button
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                aria-label={menuOpen ? "Close menu" : "Open menu"}
+                aria-label={menuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
                 aria-expanded={menuOpen}
                 className={[
                   "p-1.5 rounded-full transition-all duration-300",
@@ -288,7 +292,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
               to="/login"
               className="px-3.5 py-1.5 rounded-full text-sm border border-white/[0.07] bg-white/[0.04] backdrop-blur-2xl text-surface-text-strong hover:bg-white/8 hover:border-white/20 transition-all"
             >
-              Log in
+              {t("nav.login")}
             </Link>
           )}
         </div>
@@ -309,10 +313,13 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
             {/* Nav links grid */}
             <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-1">
               {[
-                { to: "/dashboard", label: "Dashboard" },
-                { to: "/feedback", label: "Feedback" },
+                { to: "/dashboard", label: t("nav.dashboard") },
+                { to: "/feedback", label: t("nav.feedback") },
                 ...(user.role === "admin"
-                  ? [{ to: "/admin-controls", label: "Admin" }, { to: "/teams", label: "Teams" }]
+                  ? [
+                      { to: "/admin-controls", label: t("nav.admin") },
+                      { to: "/teams", label: t("nav.teams") },
+                    ]
                   : []),
               ].map(({ to, label }) => (
                 <Link
@@ -338,7 +345,9 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
                 </span>
                 <div className="min-w-0">
                   <p className="text-sm text-surface-text-strong truncate font-medium">{user.name}</p>
-                  <p className="text-[11px] text-surface-text-muted capitalize">{user.role}</p>
+                  <p className="text-[11px] text-surface-text-muted capitalize">
+                    {t(`common.roles.${user.role}`, { defaultValue: user.role })}
+                  </p>
                 </div>
               </div>
               <button
@@ -347,7 +356,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
                 className="flex items-center gap-1.5 text-xs text-surface-text-muted hover:text-surface-text transition-colors px-3 py-1.5 rounded-full hover:bg-white/5 shrink-0"
               >
                 {LOGOUT_ICON}
-                <span>Log out</span>
+                <span>{t("nav.logout")}</span>
               </button>
             </div>
           </div>

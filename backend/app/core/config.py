@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     SUPABASE_URL: str | None = Field(default=None, description="Supabase project URL, e.g. https://xxx.supabase.co")
     SUPABASE_SERVICE_ROLE_KEY: str | None = Field(default=None, description="Supabase service role key (admin API access)")
     SUPABASE_JWT_SECRET: str | None = Field(default=None, description="Supabase JWT secret for verifying access tokens")
+    SUPABASE_ANON_KEY: str | None = Field(
+        default=None,
+        description="Supabase anon key — optional; used to send password-recovery email if invite fails (e.g. user already in Auth)",
+    )
+    APP_PUBLIC_URL: str | None = Field(
+        default=None,
+        description="Public SPA origin for Supabase invite/recovery links, e.g. https://app.example.com or http://localhost:5173",
+    )
 
     class Config:
         env_file = ".env"

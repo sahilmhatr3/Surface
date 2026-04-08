@@ -9,4 +9,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // Email magic links, invites, and password recovery use implicit grant (tokens in URL hash).
+    // flowType "pkce" rejects those URLs with "Not a valid PKCE flow url" and leaves users on "/".
+    flowType: "implicit",
+    detectSessionInUrl: true,
+  },
+});
