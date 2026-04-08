@@ -10,9 +10,9 @@ import { supabase } from "../lib/supabase";
 import { authApi, ApiError } from "../api/client";
 import type { UserResponse } from "../api/types";
 
-export type ProfileRefreshError = "no_app_profile" | "profile_fetch_failed";
+type ProfileRefreshError = "no_app_profile" | "profile_fetch_failed";
 
-export type RefreshUserResult = {
+type RefreshUserResult = {
   profile: UserResponse | null;
   profileError?: ProfileRefreshError;
 };
@@ -27,7 +27,6 @@ interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<RefreshUserResult>;
-  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -94,8 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const clearError = useCallback(() => setError(null), []);
-
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -109,7 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     refreshUser,
-    clearError,
   };
 
   return (

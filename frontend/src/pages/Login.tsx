@@ -7,7 +7,7 @@ import { useAuth } from "../hooks/useAuth";
 const pillInput =
   "w-full px-4 py-3 rounded-full bg-white/5 border border-surface-pill-border text-surface-text placeholder-surface-text-muted focus:outline-none focus:border-surface-accent-cyan/50 focus:ring-1 focus:ring-surface-accent-cyan/30 transition-all";
 
-function mapAuthErrorForDisplay(code: string | null, t: TFunction): string | null {
+function authMessage(code: string | null, t: TFunction): string | null {
   if (!code) return null;
   if (code === "no_app_profile") return t("login.noAppProfile");
   if (code === "profile_fetch_failed") return t("login.profileFetchFailed");
@@ -16,7 +16,7 @@ function mapAuthErrorForDisplay(code: string | null, t: TFunction): string | nul
 
 export default function Login() {
   const { t } = useTranslation();
-  const { login, error: authError, refreshUser, clearError } = useAuth();
+  const { login, error: authError, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,16 +26,13 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    clearError();
     setLoading(true);
     try {
       await login(email, password);
       const { profile, profileError } = await refreshUser();
       if (!profile) {
-        if (profileError === "no_app_profile") {
-          setError(t("login.noAppProfile"));
-        } else if (profileError === "profile_fetch_failed") {
-          setError(t("login.profileFetchFailed"));
+        if (profileError) {
+          setError(authMessage(profileError, t) ?? t("login.loginFailed"));
         }
         return;
       }
@@ -47,7 +44,7 @@ export default function Login() {
     }
   };
 
-  const displayError = error ?? mapAuthErrorForDisplay(authError, t);
+  const displayError = error ?? authMessage(authError, t);
 
   return (
     <section className="min-h-[calc(100vh-6rem)] flex items-center justify-center px-4 py-12">

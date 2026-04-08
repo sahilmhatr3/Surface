@@ -32,8 +32,8 @@
     "signIn": "Sign in",
     "forgotPassword": "Forgot password?",
     "loginFailed": "Login failed",
-    "noAppProfile": "You're signed in, but there is no Surface user linked to this account. Ask an administrator to add you, or check that production uses the same Supabase project as your backend.",
-    "profileFetchFailed": "Signed in, but the app could not load your profile from the API. Set VITE_API_URL on Vercel (e.g. https://api.surface.best). On your API host (e.g. Railway), set CORS_ORIGINS to a JSON list that includes https://surface.best (and https://www.surface.best if you use www), then redeploy both."
+    "noAppProfile": "You're signed in, but your account isn't set up in Surface yet. Ask an administrator to add you.",
+    "profileFetchFailed": "Signed in, but the app could not load your profile. Check the API URL (VITE_API_URL) and CORS (CORS_ORIGINS), then redeploy."
   },
   "forgotPassword": {
     "title": "Forgot password",
