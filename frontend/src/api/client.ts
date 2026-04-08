@@ -8,7 +8,9 @@
  */
 import { supabase } from "../lib/supabase";
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
+const rawBase = import.meta.env.VITE_API_URL ?? "/api";
+const BASE_URL =
+  typeof rawBase === "string" ? rawBase.replace(/\/+$/, "") || "/api" : "/api";
 
 async function getToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();

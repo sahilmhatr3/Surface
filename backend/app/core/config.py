@@ -1,12 +1,20 @@
 """
 Application settings from environment variables. No secrets in code.
 """
-from pydantic_settings import BaseSettings
-from pydantic import Field
+import json
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Load from environment; use .env for local development."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # Database
     DATABASE_URL: str = Field(
@@ -14,11 +22,34 @@ class Settings(BaseSettings):
         description="PostgreSQL connection URL",
     )
 
-    # CORS: allow frontend origin only; avoid wildcards in production
-    CORS_ORIGINS: list[str] = Field(
+    # CORS: allowed browser origins (no wildcards in production).
+    # Type str|list so pydantic-settings accepts comma-separated env values (Railway)
+    # without JSON-decoding them before validation. JSON arrays in env still work.
+    CORS_ORIGINS: str | list[str] = Field(
         default=["http://localhost:5173", "http://localhost:3000"],
         description="Allowed origins for CORS",
     )
+
+    @field_validator("CORS_ORIGINS", mode="after")
+    @classmethod
+    def normalize_cors_origins(cls, v: str | list[str]) -> list[str]:
+        default = ["http://localhost:5173", "http://localhost:3000"]
+        if isinstance(v, list):
+            out = [str(x).strip().rstrip("/") for x in v if str(x).strip()]
+            return out or default
+        s = v.strip()
+        if not s:
+            return default
+        if s.startswith("["):
+            try:
+                arr = json.loads(s)
+                if isinstance(arr, list):
+                    out = [str(x).strip().rstrip("/") for x in arr if str(x).strip()]
+                    return out or default
+            except json.JSONDecodeError:
+                pass
+        out = [p.strip().rstrip("/") for p in s.split(",") if p.strip()]
+        return out or default
 
     # Anonymity (MVP: single threshold)
     ANONYMITY_THRESHOLD: int = Field(default=1, ge=1, description="Min distinct respondents before showing comments")
@@ -38,11 +69,6 @@ class Settings(BaseSettings):
         default=None,
         description="Public SPA origin for Supabase invite/recovery links, e.g. https://app.example.com or http://localhost:5173",
     )
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
 
 
 settings = Settings()

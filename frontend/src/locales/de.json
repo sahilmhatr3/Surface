@@ -33,7 +33,7 @@
     "forgotPassword": "Passwort vergessen?",
     "loginFailed": "Anmeldung fehlgeschlagen",
     "noAppProfile": "Sie sind angemeldet, aber es ist kein Surface-Benutzer mit diesem Konto verknüpft. Bitte wenden Sie sich an eine Administratorin oder einen Administrator, oder prüfen Sie, ob dieselbe Supabase-Umgebung wie im Backend genutzt wird.",
-    "profileFetchFailed": "Anmeldung erfolgreich, aber die Surface-API konnte nicht erreicht werden oder lieferte eine unerwartete Antwort. Unter Vercel setzen Sie VITE_API_URL auf Ihre API (z. B. https://api.surface.best) und stellen Sie die Seite erneut bereit."
+    "profileFetchFailed": "Anmeldung erfolgreich, aber Ihr Profil konnte nicht von der API geladen werden. Unter Vercel: VITE_API_URL setzen (z. B. https://api.surface.best). Auf dem API-Host (z. B. Railway): CORS_ORIGINS als JSON-Liste mit https://surface.best (und ggf. https://www.surface.best), dann beides neu bereitstellen."
   },
   "forgotPassword": {
     "title": "Passwort vergessen",
