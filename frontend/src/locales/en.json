@@ -31,7 +31,9 @@
     "signingIn": "Signing in…",
     "signIn": "Sign in",
     "forgotPassword": "Forgot password?",
-    "loginFailed": "Login failed"
+    "loginFailed": "Login failed",
+    "noAppProfile": "You're signed in, but there is no Surface user linked to this account. Ask an administrator to add you, or check that production uses the same Supabase project as your backend.",
+    "profileFetchFailed": "Signed in, but the app could not reach the Surface API or got an unexpected response. On Vercel, set VITE_API_URL to your API (for example https://api.surface.best) and redeploy."
   },
   "forgotPassword": {
     "title": "Forgot password",

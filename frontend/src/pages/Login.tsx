@@ -1,14 +1,22 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useAuth } from "../hooks/useAuth";
 
 const pillInput =
   "w-full px-4 py-3 rounded-full bg-white/5 border border-surface-pill-border text-surface-text placeholder-surface-text-muted focus:outline-none focus:border-surface-accent-cyan/50 focus:ring-1 focus:ring-surface-accent-cyan/30 transition-all";
 
+function mapAuthErrorForDisplay(code: string | null, t: TFunction): string | null {
+  if (!code) return null;
+  if (code === "no_app_profile") return t("login.noAppProfile");
+  if (code === "profile_fetch_failed") return t("login.profileFetchFailed");
+  return code;
+}
+
 export default function Login() {
   const { t } = useTranslation();
-  const { login, error: authError } = useAuth();
+  const { login, error: authError, refreshUser, clearError } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,9 +26,19 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    clearError();
     setLoading(true);
     try {
       await login(email, password);
+      const { profile, profileError } = await refreshUser();
+      if (!profile) {
+        if (profileError === "no_app_profile") {
+          setError(t("login.noAppProfile"));
+        } else if (profileError === "profile_fetch_failed") {
+          setError(t("login.profileFetchFailed"));
+        }
+        return;
+      }
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("login.loginFailed"));
@@ -28,6 +46,8 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  const displayError = error ?? mapAuthErrorForDisplay(authError, t);
 
   return (
     <section className="min-h-[calc(100vh-6rem)] flex items-center justify-center px-4 py-12">
@@ -54,10 +74,8 @@ export default function Login() {
             required
             autoComplete="current-password"
           />
-          {(error || authError) && (
-            <p className="text-sm text-red-400 text-center">
-              {error || authError}
-            </p>
+          {displayError && (
+            <p className="text-sm text-red-400 text-center">{displayError}</p>
           )}
           <button
             type="submit"
