@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { adminApi, cyclesApi } from "../api/client";
 import type {
@@ -22,18 +23,18 @@ interface CreateUserRow {
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
-const TABS = [
-  { id: "users", label: "Users" },
-  { id: "create-users", label: "Create users" },
-  { id: "cycles", label: "Cycles" },
-] as const;
-type TabId = (typeof TABS)[number]["id"];
+const MAIN_TAB_ITEMS = [
+  { id: "users" as const, labelKey: "users" as const },
+  { id: "create-users" as const, labelKey: "createUsers" as const },
+  { id: "cycles" as const, labelKey: "cycles" as const },
+];
+type TabId = (typeof MAIN_TAB_ITEMS)[number]["id"];
 
-const USERS_SUB_TABS = [
-  { id: "users-list", label: "Users" },
-  { id: "teams", label: "Teams" },
+const USERS_SUB_TAB_ITEMS = [
+  { id: "users-list" as const, labelKey: "usersList" as const },
+  { id: "teams" as const, labelKey: "teams" as const },
 ] as const;
-type UsersSubTabId = (typeof USERS_SUB_TABS)[number]["id"];
+type UsersSubTabId = (typeof USERS_SUB_TAB_ITEMS)[number]["id"];
 
 const cardClass =
   "rounded-2xl bg-surface-card border border-surface-pill-border p-6";
@@ -42,9 +43,9 @@ const inputClass =
 const btnClass =
   "px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border hover:border-white/40 hover:bg-white/5 transition-all text-surface-text-strong disabled:opacity-50";
 
-function formatDate(iso: string) {
+function formatDate(iso: string, locale: string) {
   try {
-    return new Date(iso).toLocaleDateString("en-US", {
+    return new Date(iso).toLocaleDateString(locale, {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -55,6 +56,7 @@ function formatDate(iso: string) {
 }
 
 export default function AdminControls() {
+  const { t, i18n } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>("users");
@@ -104,14 +106,16 @@ export default function AdminControls() {
     setError(null);
     setLoading(true);
     Promise.all([adminApi.listUsers(), adminApi.listTeams()])
-      .then(([u, t]) => {
+      .then(([u, teamList]) => {
         setUsers(u);
-        setTeams(t);
-        if (t.length > 0 && !selectedTeamId) setSelectedTeamId(t[0].id);
+        setTeams(teamList);
+        if (teamList.length > 0 && !selectedTeamId) setSelectedTeamId(teamList[0].id);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : t("common.failedToLoad"))
+      )
       .finally(() => setLoading(false));
-  }, [selectedTeamId]);
+  }, [selectedTeamId, t]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -415,7 +419,7 @@ export default function AdminControls() {
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
       <h1 className="text-2xl sm:text-3xl font-bold text-surface-text-strong tracking-tight mb-6">
-        Admin controls
+        {t("admin.title")}
       </h1>
 
       {error && (
@@ -427,7 +431,7 @@ export default function AdminControls() {
       <div className="flex flex-col sm:flex-row gap-6">
         {/* Vertical tabs */}
         <nav className="sm:w-48 shrink-0 flex sm:flex-col gap-1 border-b sm:border-b-0 sm:border-r border-surface-pill-border pb-4 sm:pb-0 sm:pr-4">
-          {TABS.map((tab) => (
+          {MAIN_TAB_ITEMS.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -438,7 +442,7 @@ export default function AdminControls() {
                   : "text-surface-text-muted hover:text-surface-text hover:bg-white/5 border border-transparent"
               }`}
             >
-              {tab.label}
+              {t(`admin.tabs.${tab.labelKey}`)}
             </button>
           ))}
         </nav>
@@ -454,7 +458,7 @@ export default function AdminControls() {
               {activeTab === "users" && (
                 <section className={cardClass}>
                   <div className="flex flex-wrap gap-2 mb-4 border-b border-surface-pill-border pb-3">
-                    {USERS_SUB_TABS.map((tab) => (
+                    {USERS_SUB_TAB_ITEMS.map((tab) => (
                       <button
                         key={tab.id}
                         type="button"
@@ -465,7 +469,7 @@ export default function AdminControls() {
                             : "text-surface-text-muted hover:text-surface-text hover:bg-white/5 border border-transparent"
                         }`}
                       >
-                        {tab.label}
+                        {t(`admin.subTabs.${tab.labelKey}`)}
                       </button>
                     ))}
                   </div>
@@ -473,7 +477,7 @@ export default function AdminControls() {
                   {usersSubTab === "users-list" && (
                     <>
                       <h2 className="text-lg font-semibold text-surface-text-strong mb-4">
-                        Users
+                        {t("admin.subTabs.usersList")}
                       </h2>
                       <div className="mb-4 flex flex-wrap gap-3">
                         <input
@@ -622,7 +626,7 @@ export default function AdminControls() {
                                           <ul className="text-sm text-surface-text space-y-1">
                                             {cyclesList.map((c) => (
                                               <li key={c.id}>
-                                                {formatDate(c.start_date)} – {formatDate(c.end_date)} · {c.status}
+                                                {formatDate(c.start_date, i18n.language)} – {formatDate(c.end_date, i18n.language)} · {c.status}
                                               </li>
                                             ))}
                                           </ul>
@@ -644,12 +648,9 @@ export default function AdminControls() {
               {activeTab === "create-users" && (
                 <section className={cardClass}>
                   <h2 className="text-lg font-semibold text-surface-text-strong mb-1">
-                    Create users
+                    {t("admin.tabs.createUsers")}
                   </h2>
-                  <p className="text-surface-text-muted text-sm mb-5">
-                    New users will receive an invite email from Supabase to set their own password.
-                    For employees, select a manager first — the team will auto-fill from theirs.
-                  </p>
+                  <p className="text-surface-text-muted text-sm mb-5">{t("admin.createUsersHelp")}</p>
                   {createResult && (
                     <p className="text-sm text-surface-text-muted mb-3">{createResult}</p>
                   )}
@@ -869,7 +870,7 @@ export default function AdminControls() {
                                   Cycle #{c.id}
                                 </span>
                                 <span className="text-surface-text-muted text-sm">
-                                  {formatDate(c.start_date)} – {formatDate(c.end_date)} · {c.status}
+                                  {formatDate(c.start_date, i18n.language)} – {formatDate(c.end_date, i18n.language)} · {c.status}
                                 </span>
                                 {c.status === "open" && (
                                   <button

@@ -7,8 +7,15 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "../lib/supabase";
-import { authApi } from "../api/client";
+import { authApi, ApiError } from "../api/client";
 import type { UserResponse } from "../api/types";
+
+type ProfileRefreshError = "no_app_profile" | "profile_fetch_failed";
+
+type RefreshUserResult = {
+  profile: UserResponse | null;
+  profileError?: ProfileRefreshError;
+};
 
 interface AuthState {
   user: UserResponse | null;
@@ -19,7 +26,7 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<RefreshUserResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -33,45 +40,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Fetch the app-level user profile from our backend using the current
    * Supabase session token. Clears the user if no session exists.
    */
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (): Promise<RefreshUserResult> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       setUser(null);
       setLoading(false);
-      return;
+      return { profile: null };
     }
+    setLoading(true);
     try {
       const profile = await authApi.me();
       setUser(profile);
       setError(null);
-    } catch {
+      return { profile };
+    } catch (e) {
       setUser(null);
+      const profileError: ProfileRefreshError =
+        e instanceof ApiError && e.status === 401
+          ? "no_app_profile"
+          : "profile_fetch_failed";
+      setError(profileError);
+      return { profile: null, profileError };
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // Initial check on mount
-    refreshUser();
+    void refreshUser();
 
-    // Subscribe to Supabase auth state changes (sign-in, sign-out, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (!session) {
-          setUser(null);
-          setLoading(false);
-        } else {
-          // Mark loading before the async profile fetch so protected pages
-          // don't see (authLoading=false, user=null) and redirect to login.
-          setLoading(true);
-          authApi.me()
-            .then((profile) => { setUser(profile); setError(null); })
-            .catch(() => setUser(null))
-            .finally(() => setLoading(false));
-        }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setUser(null);
+        setLoading(false);
+      } else {
+        void refreshUser();
       }
-    );
+    });
 
     return () => subscription.unsubscribe();
   }, [refreshUser]);
@@ -86,7 +91,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(sbError.message);
       throw new Error(sbError.message);
     }
-    // onAuthStateChange will fire and fetch the app profile automatically
   }, []);
 
   const logout = useCallback(async () => {

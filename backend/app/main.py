@@ -24,7 +24,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    """Health check for load balancers and local dev."""
+    """Health check for load balancers and local development."""
     return {"status": "ok"}
 
 

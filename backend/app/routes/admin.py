@@ -3,6 +3,7 @@ Admin routes: user/team management and cycle operations. All require admin role.
 """
 import logging
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -31,31 +32,157 @@ from app.core.config import settings
 router = APIRouter(dependencies=[Depends(get_current_admin_user)])
 
 
-def _create_supabase_auth_user(email: str) -> str | None:
+def _auth_public_base_url() -> str:
+    """Browser-reachable SPA origin for Supabase email redirect_to (invite / recovery)."""
+    if settings.APP_PUBLIC_URL and settings.APP_PUBLIC_URL.strip():
+        return settings.APP_PUBLIC_URL.strip().rstrip("/")
+    if settings.CORS_ORIGINS:
+        return settings.CORS_ORIGINS[0].rstrip("/")
+    return "http://localhost:5173"
+
+
+def _supabase_auth_headers() -> dict[str, str]:
+    key = settings.SUPABASE_SERVICE_ROLE_KEY or ""
+    return {
+        "Authorization": f"Bearer {key}",
+        "apikey": key,
+        "Content-Type": "application/json",
+    }
+
+
+def _parse_user_id_from_auth_json(data: dict) -> str | None:
+    user = data.get("user") if isinstance(data.get("user"), dict) else None
+    if user and user.get("id"):
+        return str(user["id"])
+    if data.get("id"):
+        return str(data["id"])
+    return None
+
+
+def _find_supabase_auth_user_id_by_email(email: str) -> str | None:
+    """Paginate Auth users until we find a matching email (case-insensitive)."""
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    target = email.lower().strip()
+    base = settings.SUPABASE_URL.rstrip("/")
+    page = 1
+    per_page = 200
+    max_pages = 50
+    while page <= max_pages:
+        try:
+            r = httpx.get(
+                f"{base}/auth/v1/admin/users",
+                headers=_supabase_auth_headers(),
+                params={"page": str(page), "per_page": str(per_page)},
+                timeout=30,
+            )
+            r.raise_for_status()
+            payload = r.json()
+            users = payload.get("users") or []
+        except Exception as exc:
+            logger.error("Failed to list Supabase auth users (page %s): %s", page, exc)
+            return None
+        for u in users:
+            if (u.get("email") or "").lower() == target:
+                uid = u.get("id")
+                return str(uid) if uid else None
+        if len(users) < per_page:
+            break
+        page += 1
+    return None
+
+
+def _send_password_recovery_email(email: str, redirect_path: str) -> bool:
     """
-    Create a user in Supabase Auth via the Admin API.
-    Returns the Supabase user UUID (stored as supabase_id) or None on failure.
-    The user is created with email_confirm=True so they are active immediately.
-    They must use the password-reset / invite flow to set their own password.
+    Ask Supabase to email a password-reset link (uses anon key; same as client resetPasswordForEmail).
+    redirect_path should be a full URL, e.g. https://app.example.com/auth/reset-password
+    """
+    anon = settings.SUPABASE_ANON_KEY
+    if not settings.SUPABASE_URL or not anon:
+        return False
+    base = settings.SUPABASE_URL.rstrip("/")
+    qs = urlencode({"redirect_to": redirect_path})
+    try:
+        r = httpx.post(
+            f"{base}/auth/v1/recover?{qs}",
+            headers={
+                "Authorization": f"Bearer {anon}",
+                "apikey": anon,
+                "Content-Type": "application/json",
+            },
+            json={"email": email},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return True
+    except Exception as exc:
+        logger.error("Failed to send Supabase recovery email for %s: %s", email, exc)
+        return False
+
+
+def _invite_supabase_auth_user(email: str) -> str | None:
+    """
+    Invite user via Supabase Auth — creates the Auth user and sends the invite email so they can set a password.
+    (Admin createUser does not send mail; invite does.)
+
+    If invite fails because the email already exists in Auth, we try to reuse that user id and send a
+    password-recovery email instead (requires SUPABASE_ANON_KEY).
     """
     if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
         logger.warning("Supabase not configured; skipping auth user creation")
         return None
+
+    base = settings.SUPABASE_URL.rstrip("/")
+    public_base = _auth_public_base_url()
+    # Invite emails must land on /auth/callback?flow=invite so the SPA sends users to set
+    # a password (invite sessions are SIGNED_IN, not PASSWORD_RECOVERY).
+    invite_redirect = f"{public_base}/auth/callback?flow=invite"
+    recovery_redirect = f"{public_base}/auth/reset-password"
+
+    qs = urlencode({"redirect_to": invite_redirect})
+    url = f"{base}/auth/v1/invite?{qs}"
+
     try:
         r = httpx.post(
-            f"{settings.SUPABASE_URL}/auth/v1/admin/users",
-            headers={
-                "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
-                "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
-                "Content-Type": "application/json",
-            },
-            json={"email": email, "email_confirm": True},
-            timeout=10,
+            url,
+            headers=_supabase_auth_headers(),
+            json={"email": email, "data": {}},
+            timeout=15,
         )
         r.raise_for_status()
-        return r.json().get("id")
+        uid = _parse_user_id_from_auth_json(r.json())
+        if not uid:
+            logger.error("Supabase invite OK but no user id in body for %s: %s", email, r.text)
+            return None
+        logger.info("Supabase invite email sent for %s", email)
+        return uid
+    except httpx.HTTPStatusError as exc:
+        resp = exc.response
+        code = resp.status_code if resp else 0
+        body = resp.text if resp else ""
+        logger.warning(
+            "Supabase invite HTTP %s for %s: %s",
+            code,
+            email,
+            body[:500],
+        )
+        # Only treat likely "already exists" / validation responses as duplicate-user fallback
+        if code not in (400, 409, 422):
+            return None
+        existing = _find_supabase_auth_user_id_by_email(email)
+        if not existing:
+            return None
+        if _send_password_recovery_email(email, recovery_redirect):
+            logger.info("Sent password-recovery email to existing Auth user %s", email)
+        else:
+            logger.warning(
+                "Auth user %s already exists but recovery email was not sent "
+                "(set SUPABASE_ANON_KEY in backend .env to enable).",
+                email,
+            )
+        return existing
     except Exception as exc:
-        logger.error("Failed to create Supabase auth user for %s: %s", email, exc)
+        logger.error("Failed to invite Supabase user %s: %s", email, exc)
         return None
 
 
@@ -72,9 +199,8 @@ def _get_or_create_team_by_name(name: str, db: Session) -> Team:
 @router.post("/users/import", response_model=UsersImportResponse)
 def import_users(body: UsersImportRequest, db: Session = Depends(get_db)):
     """
-    Import users and teams. Each row requires: name, email, password, role, and
-    either team_id (existing) or team_name (get-or-create). manager_id is
-    required for employees. The admin provides the initial password for each user.
+    Import users and teams. Creates Supabase Auth users via invite (invite email to set password).
+    Each row: name, email, role, team_id or team_name, optional manager_id.
     """
     errors: list[str] = []
     team_by_name: dict[str, Team] = {}
@@ -123,8 +249,8 @@ def import_users(body: UsersImportRequest, db: Session = Depends(get_db)):
             if not manager:
                 errors.append(f"Manager ID not found for {email}: {manager_id}")
                 manager_id = None
-        # Create the user in Supabase Auth first so we can store the UUID
-        supabase_uid = _create_supabase_auth_user(email)
+        # Supabase Auth: invite sends “set password” email; stores UUID for supabase_id
+        supabase_uid = _invite_supabase_auth_user(email)
         if supabase_uid is None:
             errors.append(f"Failed to create Supabase auth account for {email}; skipping")
             continue

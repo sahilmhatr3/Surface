@@ -3,6 +3,7 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { adminApi } from "../api/client";
 import type { TeamResponse } from "../api/types";
@@ -10,6 +11,7 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
 export default function Teams() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [teams, setTeams] = useState<TeamResponse[]>([]);
@@ -32,9 +34,9 @@ export default function Teams() {
     adminApi
       .listTeams()
       .then(setTeams)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) => setError(e instanceof Error ? e.message : t("common.failedToLoad")))
       .finally(() => setLoading(false));
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, t]);
 
   if (authLoading) {
     return (
@@ -49,9 +51,7 @@ export default function Teams() {
   if (user.role !== "admin") {
     return (
       <section className="max-w-xl mx-auto px-4 py-16 text-center">
-        <p className="text-surface-text-muted">
-          Only admins can view the teams list.
-        </p>
+        <p className="text-surface-text-muted">{t("teams.adminOnly")}</p>
       </section>
     );
   }
@@ -59,7 +59,7 @@ export default function Teams() {
   return (
     <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
       <h1 className="text-3xl sm:text-4xl font-bold text-surface-text-strong tracking-tight mb-10">
-        Teams
+        {t("teams.title")}
       </h1>
 
       {error && (
@@ -74,7 +74,7 @@ export default function Teams() {
 
       {!error && !loading && teams.length === 0 && (
         <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-8 text-center text-surface-text-muted">
-          No teams yet. Import users via admin to create teams.
+          {t("teams.empty")}
         </div>
       )}
 

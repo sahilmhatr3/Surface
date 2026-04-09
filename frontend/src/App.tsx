@@ -3,6 +3,9 @@ import { AuthProvider } from "./hooks/useAuth";
 import Layout from "./components/Layout";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
+import AuthCallback from "./pages/AuthCallback";
+import ResetPassword from "./pages/ResetPassword";
 import Concept from "./pages/Concept";
 import Presentation from "./pages/Presentation";
 import Dashboard from "./pages/Dashboard";
@@ -19,6 +22,9 @@ function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Landing />} />
           <Route path="login" element={<Login />} />
+          <Route path="forgot-password" element={<ForgotPassword />} />
+          <Route path="auth/callback" element={<AuthCallback />} />
+          <Route path="auth/reset-password" element={<ResetPassword />} />
           <Route path="concept" element={<Concept />} />
           <Route path="presentation" element={<Presentation />} />
           <Route path="dashboard" element={<Dashboard />} />

@@ -109,7 +109,7 @@ class StructuredFeedback(Base):
     giver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     receiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     cycle_id: Mapped[int] = mapped_column(ForeignKey("feedback_cycles.id"), nullable=False, index=True)
-    scores: Mapped[dict] = mapped_column(JSON, nullable=False)  # e.g. {"support": 4, "communication": 5}
+    scores: Mapped[dict] = mapped_column(JSON, nullable=False)  # {"support": perf 1–5, "communication": impact 1–5}
     comments_helpful: Mapped[str | None] = mapped_column(Text, nullable=True)
     comments_improvement: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

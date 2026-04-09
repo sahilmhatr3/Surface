@@ -2,7 +2,8 @@
  * Presentation: metrics/deck-style view from backend.
  * Uses GET /cycles to show participation_rants, participation_structured per cycle.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi } from "../api/client";
 import type { CycleResponse } from "../api/types";
@@ -10,9 +11,10 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 import { Link } from "react-router-dom";
 
-function formatDate(iso: string) {
+function formatDate(iso: string, locale: string) {
   try {
-    return new Date(iso).toLocaleDateString("en-US", {
+    const loc = locale.startsWith("de") ? "de-DE" : "en-US";
+    return new Date(iso).toLocaleDateString(loc, {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -23,20 +25,21 @@ function formatDate(iso: string) {
 }
 
 export default function Presentation() {
+  const { t, i18n } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const [cycles, setCycles] = useState<CycleResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     setError(null);
     setLoading(true);
     cyclesApi
       .listCycles()
       .then(setCycles)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) => setError(e instanceof Error ? e.message : t("common.failedToLoad")))
       .finally(() => setLoading(false));
-  };
+  }, [t]);
 
   useEffect(() => {
     if (!user) {
@@ -45,7 +48,7 @@ export default function Presentation() {
       return;
     }
     load();
-  }, [user]);
+  }, [user, load]);
 
   if (authLoading || (user && loading)) {
     return (
@@ -58,14 +61,12 @@ export default function Presentation() {
   if (!user) {
     return (
       <section className="max-w-xl mx-auto px-4 py-16 text-center">
-        <p className="text-surface-text-muted mb-4">
-          Sign in to see cycle metrics and participation data.
-        </p>
+        <p className="text-surface-text-muted mb-4">{t("presentation.signInPrompt")}</p>
         <Link
           to="/login"
           className="inline-flex px-6 py-3 rounded-full text-surface-text-strong border border-surface-pill-border hover:border-white/40 hover:bg-white/5 transition-all"
         >
-          Log in
+          {t("nav.login")}
         </Link>
       </section>
     );
@@ -74,11 +75,9 @@ export default function Presentation() {
   return (
     <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
       <h1 className="text-3xl sm:text-4xl font-bold text-surface-text-strong tracking-tight mb-2">
-        Presentation
+        {t("presentation.title")}
       </h1>
-      <p className="text-surface-text-muted mb-10">
-        Feedback cycle metrics from your team
-      </p>
+      <p className="text-surface-text-muted mb-10">{t("presentation.subtitle")}</p>
 
       {error && (
         <ErrorMessage message={error} onRetry={load} />
@@ -86,7 +85,7 @@ export default function Presentation() {
 
       {!error && cycles.length === 0 && (
         <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-8 text-center text-surface-text-muted">
-          No cycles yet. Create a cycle from the admin or dashboard to see metrics here.
+          {t("presentation.empty")}
         </div>
       )}
 
@@ -116,17 +115,17 @@ export default function Presentation() {
                 </span>
               </div>
               <p className="text-sm text-surface-text-muted mb-4">
-                {formatDate(c.start_date)} – {formatDate(c.end_date)}
+                {formatDate(c.start_date, i18n.language)} – {formatDate(c.end_date, i18n.language)}
               </p>
               <div className="flex gap-6 text-sm">
                 <div>
-                  <span className="text-surface-text-muted">Rants </span>
+                  <span className="text-surface-text-muted">{t("presentation.rants")} </span>
                   <span className="text-surface-text-strong">
                     {c.participation_rants ?? "—"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-surface-text-muted">Structured </span>
+                  <span className="text-surface-text-muted">{t("presentation.structured")} </span>
                   <span className="text-surface-text-strong">
                     {c.participation_structured ?? "—"}
                   </span>
@@ -136,7 +135,7 @@ export default function Presentation() {
                 to="/insights"
                 className="mt-4 inline-block text-sm text-surface-accent-cyan hover:underline"
               >
-                View insights →
+                {t("presentation.viewInsights")}
               </Link>
             </div>
           ))}

@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi, feedbackApi } from "../api/client";
 import type {
@@ -17,19 +18,21 @@ import ErrorMessage from "../components/ErrorMessage";
 
 // ---------- helpers ----------
 
-function greeting(name: string) {
+function greetingKey(): "dashboard.greeting.morning" | "dashboard.greeting.afternoon" | "dashboard.greeting.evening" {
   const h = new Date().getHours();
-  const salutation = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-  return `${salutation}, ${name.split(" ")[0]}`;
+  if (h < 12) return "dashboard.greeting.morning";
+  if (h < 17) return "dashboard.greeting.afternoon";
+  return "dashboard.greeting.evening";
 }
 
 function daysUntil(iso: string) {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 }
 
-function formatDateShort(iso: string) {
+function formatDateShort(iso: string, locale: string) {
   try {
-    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const loc = locale.startsWith("de") ? "de-DE" : "en-US";
+    return new Date(iso).toLocaleDateString(loc, { month: "short", day: "numeric", year: "numeric" });
   } catch {
     return iso;
   }
@@ -183,6 +186,7 @@ function LatestScoreRow({ item }: { item: ScoreHistoryItem }) {
 // ---------- main ----------
 
 export default function Dashboard() {
+  const { t, i18n } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [cycles, setCycles] = useState<CycleResponse[]>([]);
@@ -227,9 +231,9 @@ export default function Dashboard() {
             : Promise.resolve(null),
         ]);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) => setError(e instanceof Error ? e.message : t("dashboard.failedLoad")))
       .finally(() => setLoading(false));
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, t]);
 
   const openCycles = useMemo(() => cycles.filter((c) => c.status === "open"), [cycles]);
 
@@ -241,41 +245,41 @@ export default function Dashboard() {
       if (c.status === "open") {
         const d = daysUntil(c.end_date);
         items.push({
-          label: `Cycle #${c.id} open`,
-          detail: d > 0 ? `Closes in ${d}d` : "Closes today",
+          label: t("dashboard.cycleOpenLabel", { id: c.id }),
+          detail: d > 0 ? t("dashboard.closesInDaysShort", { count: d }) : t("dashboard.closesToday"),
           href: "/feedback",
-          cta: "Give feedback",
+          cta: t("dashboard.giveFeedback"),
           dot: "bg-surface-text-muted/60",
         });
       }
       if (c.status === "compiled" && isManagerOrAdmin) {
         items.push({
-          label: `Cycle #${c.id} needs review`,
-          detail: "Compiled, unpublished",
+          label: t("dashboard.needsReview", { id: c.id }),
+          detail: t("dashboard.compiledUnpublished"),
           href: `/insights?cycle=${c.id}`,
-          cta: "Review",
+          cta: t("dashboard.review"),
           dot: "bg-violet-400/60",
         });
       }
       if (c.status === "published" && !isManagerOrAdmin) {
         items.push({
-          label: `Cycle #${c.id} insights`,
-          detail: formatDateShort(c.end_date),
+          label: t("dashboard.insightsLabel", { id: c.id }),
+          detail: formatDateShort(c.end_date, i18n.language),
           href: `/insights?cycle=${c.id}`,
-          cta: "View",
+          cta: t("common.view"),
           dot: "bg-sky-400/50",
         });
         items.push({
-          label: `Cycle #${c.id} — your feedback`,
-          detail: "Personal results available",
+          label: t("dashboard.yourFeedback", { id: c.id }),
+          detail: t("dashboard.personalResults"),
           href: `/incoming-feedback?cycle=${c.id}`,
-          cta: "View",
+          cta: t("common.view"),
           dot: "bg-white/20",
         });
       }
     });
     return items;
-  }, [cycles, user, isManagerOrAdmin]);
+  }, [cycles, user, isManagerOrAdmin, t, i18n.language]);
 
   const teamActions = useMemo(
     () => (latestSummary?.actions ?? []).filter((a) => a.receiver_id == null),
@@ -294,14 +298,14 @@ export default function Dashboard() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl sm:text-4xl font-bold text-surface-text-strong tracking-tight">
-            {greeting(user.name)}
+            {t(greetingKey(), { name: user.name.split(" ")[0] })}
           </h1>
           <p className="text-surface-text-muted mt-1 text-sm">
-            Here's what's happening with your team.
+            {t("dashboard.subtitle")}
           </p>
         </div>
         <span className={`text-xs px-2.5 py-1 rounded-full border font-medium capitalize ${ROLE_BADGE[user.role] ?? ROLE_BADGE.employee}`}>
-          {user.role}
+          {t(`common.roles.${user.role}`, { defaultValue: user.role })}
         </span>
       </div>
 
@@ -318,12 +322,12 @@ export default function Dashboard() {
                 <span className="w-1.5 h-1.5 rounded-full bg-surface-text-muted shrink-0" />
                 <div>
                   <span className="text-sm font-medium text-surface-text-strong">
-                    Cycle #{openCycles[0].id} is open
+                    {t("dashboard.cycleOpen", { id: openCycles[0].id })}
                   </span>
                   <span className="text-xs text-surface-text-muted ml-2">
                     {(() => {
                       const d = daysUntil(openCycles[0].end_date);
-                      return d > 0 ? `Closes in ${d} day${d !== 1 ? "s" : ""}` : "Closes today";
+                      return d > 0 ? t("dashboard.closesInDays", { count: d }) : t("dashboard.closesToday");
                     })()}
                   </span>
                 </div>
@@ -332,7 +336,7 @@ export default function Dashboard() {
                 to="/feedback"
                 className="px-4 py-1.5 rounded-full text-xs font-medium border border-white/15 text-surface-text hover:border-white/30 hover:bg-white/5 transition-all shrink-0"
               >
-                Give feedback
+                {t("dashboard.giveFeedback")}
               </Link>
             </div>
           )}
@@ -344,22 +348,26 @@ export default function Dashboard() {
             <div className="lg:col-span-3 rounded-2xl border border-surface-pill-border bg-surface-card px-5 py-4">
               <div className="flex items-center justify-between mb-1">
                 <h2 className="text-sm font-semibold text-surface-text-strong">
-                  {isManagerOrAdmin ? "Team average scores" : "Your scores"} over time
+                  {isManagerOrAdmin
+                    ? t("dashboard.scoresTitleManager")
+                    : t("dashboard.scoresTitleEmployee")}
                 </h2>
                 {scoreHistory.length > 0 && (
                   <span className="text-xs text-surface-text-muted/60">
-                    {scoreHistory.length} cycle{scoreHistory.length !== 1 ? "s" : ""}
+                    {t("dashboard.cycleCount", { count: scoreHistory.length })}
                   </span>
                 )}
               </div>
 
               {scoreHistory.length === 0 ? (
                 <p className="text-sm text-surface-text-muted py-8 text-center">
-                  Score trends will appear here after cycles are published.
+                  {t("dashboard.scoreTrendsEmpty")}
                 </p>
               ) : scoreHistory.length === 1 ? (
                 <div className="pt-2">
-                  <p className="text-xs text-surface-text-muted mb-2">Latest · {scoreHistory[0].cycle_label}</p>
+                  <p className="text-xs text-surface-text-muted mb-2">
+                    {t("dashboard.latest")} · {scoreHistory[0].cycle_label}
+                  </p>
                   <LatestScoreRow item={scoreHistory[0]} />
                 </div>
               ) : (
@@ -373,7 +381,7 @@ export default function Dashboard() {
             {/* Latest team actions */}
             <div className="lg:col-span-2 rounded-2xl border border-surface-pill-border bg-surface-card px-5 py-4 flex flex-col">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-surface-text-strong">Team actions</h2>
+                <h2 className="text-sm font-semibold text-surface-text-strong">{t("dashboard.teamActions")}</h2>
                 {latestSummary && (
                   <Link
                     to={`/insights?cycle=${latestSummary.cycle_id}`}
@@ -386,7 +394,7 @@ export default function Dashboard() {
 
               {teamActions.length === 0 ? (
                 <p className="text-sm text-surface-text-muted flex-1 flex items-center justify-center py-6 text-center">
-                  Team actions will appear here after the manager publishes a cycle.
+                  {t("dashboard.teamActionsEmpty")}
                 </p>
               ) : (
                 <ul className="space-y-2 flex-1">
@@ -413,7 +421,7 @@ export default function Dashboard() {
               {/* Action items — dense list */}
               {actionItems.length > 0 && (
                 <div className="rounded-2xl border border-surface-pill-border bg-surface-card px-5 py-4">
-                  <h2 className="text-sm font-semibold text-surface-text-strong mb-3">To do</h2>
+                  <h2 className="text-sm font-semibold text-surface-text-strong mb-3">{t("dashboard.todo")}</h2>
                   <ul className="space-y-0 divide-y divide-surface-pill-border/40">
                     {actionItems.map((item, i) => (
                       <li key={i} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -437,7 +445,9 @@ export default function Dashboard() {
               {/* Personal action items */}
               {myActions.length > 0 && (
                 <div className="rounded-2xl border border-surface-pill-border bg-surface-card px-5 py-4">
-                  <h2 className="text-sm font-semibold text-surface-text-strong mb-3">Your action items</h2>
+                  <h2 className="text-sm font-semibold text-surface-text-strong mb-3">
+                    {t("dashboard.yourActionItems")}
+                  </h2>
                   <ul className="space-y-0 divide-y divide-surface-pill-border/40">
                     {myActions.map(({ action, cycleId }, i) => (
                       <li key={i} className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -452,7 +462,7 @@ export default function Dashboard() {
                           to={`/incoming-feedback?cycle=${cycleId}`}
                           className="shrink-0 text-xs text-surface-text-muted hover:text-surface-text border border-white/10 hover:border-white/25 px-2.5 py-1 rounded-full transition-all"
                         >
-                          View
+                          {t("common.view")}
                         </Link>
                       </li>
                     ))}

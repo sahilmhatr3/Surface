@@ -5,6 +5,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi, feedbackApi } from "../api/client";
 import type {
@@ -25,36 +26,36 @@ function capitalize(s: string) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-const SENTIMENT_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
+const SENTIMENT_STYLE: Record<string, { cls: string; dot: string }> = {
   positive: {
-    label: "Positive",
     cls: "bg-white/5 text-emerald-400/75 border border-emerald-500/20",
     dot: "bg-emerald-400/60",
   },
   neutral: {
-    label: "Neutral",
     cls: "bg-white/5 text-surface-text-muted border border-white/8",
     dot: "bg-surface-text-muted",
   },
   negative: {
-    label: "Negative",
     cls: "bg-white/5 text-rose-400/75 border border-rose-500/20",
     dot: "bg-rose-400/60",
   },
 };
 
 function SentimentBadge({ sentiment }: { sentiment: string }) {
-  const cfg = SENTIMENT_CONFIG[sentiment] ?? SENTIMENT_CONFIG.neutral;
+  const { t } = useTranslation();
+  const cfg = SENTIMENT_STYLE[sentiment] ?? SENTIMENT_STYLE.neutral;
+  const label = t(`insights.sentiment.${sentiment}`, { defaultValue: sentiment });
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${cfg.cls}`}>
-      {cfg.label}
+      {label}
     </span>
   );
 }
 
 function StrengthDots({ score }: { score: number }) {
+  const { t } = useTranslation();
   return (
-    <span className="flex gap-0.5 items-center shrink-0" title={`Strength: ${score}/5`}>
+    <span className="flex gap-0.5 items-center shrink-0" title={t("insights.strengthTitle", { score })}>
       {[1, 2, 3, 4, 5].map((i) => (
         <span
           key={i}
@@ -94,11 +95,12 @@ function EditIcon() {
 }
 
 function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      title={visible ? "Hide from team" : "Show to team"}
+      title={visible ? t("insights.hideFromTeam") : t("insights.showToTeam")}
       className={`p-1 rounded-md transition-colors shrink-0 ${
         visible
           ? "text-surface-text-muted hover:text-surface-text hover:bg-white/5"
@@ -173,8 +175,13 @@ function ActionRow({
   onEditCommit: () => void;
   onEditCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const isIndividual = action.receiver_id != null;
-  const targetName = action.receiver_id != null ? (nameMap[action.receiver_id] ?? `Person #${action.receiver_id}`) : null;
+  const targetName =
+    action.receiver_id != null
+      ? (nameMap[action.receiver_id] ??
+        t("insights.personFallback", { id: action.receiver_id }))
+      : null;
 
   return (
     <div className={`rounded-xl border overflow-hidden transition-all ${isHidden ? "opacity-50 border-dashed border-surface-pill-border" : "border-surface-pill-border"}`}>
@@ -184,7 +191,7 @@ function ActionRow({
             ? "bg-violet-500/10 text-violet-400/80 border-violet-500/20"
             : "bg-sky-500/10 text-sky-400/80 border-sky-500/20"
         }`}>
-          {isIndividual ? targetName : "Team"}
+          {isIndividual ? targetName : t("insights.actionRowTeam")}
         </span>
         {action.theme && (
           <span className="text-xs text-surface-text-muted bg-white/5 border border-surface-pill-border px-2 py-0.5 rounded mt-0.5 shrink-0">
@@ -206,14 +213,14 @@ function ActionRow({
                   onClick={onEditCommit}
                   className="text-xs px-3 py-1 rounded-full border border-surface-accent-cyan/40 text-surface-accent-cyan hover:bg-surface-accent-cyan/10 transition-colors"
                 >
-                  Done
+                  {t("common.done")}
                 </button>
                 <button
                   type="button"
                   onClick={onEditCancel}
                   className="text-xs px-3 py-1 rounded-full border border-surface-pill-border text-surface-text-muted hover:bg-white/5 transition-colors"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -228,7 +235,7 @@ function ActionRow({
             <button
               type="button"
               onClick={onEditStart}
-              title="Edit"
+              title={t("common.edit")}
               className="p-1 rounded-md text-surface-text-muted hover:text-surface-text hover:bg-white/5 transition-colors"
             >
               <EditIcon />
@@ -243,23 +250,23 @@ function ActionRow({
 
 // ---------- cycle history ----------
 
-const EVENT_CONFIG: Record<string, { label: string; dot: string }> = {
-  created:                { label: "Cycle created",                       dot: "bg-surface-accent-cyan/60" },
-  closed_manual:          { label: "Closed manually",                     dot: "bg-amber-400/60" },
-  closed_auto:            { label: "Closed (end date reached)",            dot: "bg-surface-text-muted/60" },
-  reopened:               { label: "Reopened",                            dot: "bg-sky-400/60" },
-  end_date_extended:      { label: "End date extended",                   dot: "bg-sky-400/40" },
-  compiled:               { label: "Compiled",                            dot: "bg-violet-400/60" },
-  recompiled:             { label: "Recompiled",                          dot: "bg-violet-400/60" },
-  published:              { label: "Published to team",                   dot: "bg-emerald-400/60" },
-  raw_data_wiped_manual:  { label: "Raw responses wiped",                 dot: "bg-rose-400/50" },
-  raw_data_wiped_auto:    { label: "Raw responses auto-wiped",            dot: "bg-rose-400/30" },
+const EVENT_DOT: Record<string, string> = {
+  created: "bg-surface-accent-cyan/60",
+  closed_manual: "bg-amber-400/60",
+  closed_auto: "bg-surface-text-muted/60",
+  reopened: "bg-sky-400/60",
+  end_date_extended: "bg-sky-400/40",
+  compiled: "bg-violet-400/60",
+  recompiled: "bg-violet-400/60",
+  published: "bg-emerald-400/60",
+  raw_data_wiped_manual: "bg-rose-400/50",
+  raw_data_wiped_auto: "bg-rose-400/30",
 };
 
-function formatEventTime(iso: string | null) {
+function formatEventTime(iso: string | null, locale: string) {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString("en-US", {
+    return new Date(iso).toLocaleString(locale, {
       month: "short", day: "numeric", year: "numeric",
       hour: "numeric", minute: "2-digit",
     });
@@ -271,6 +278,7 @@ function formatEventTime(iso: string | null) {
 // ---------- main component ----------
 
 export default function Insights() {
+  const { t, i18n } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -324,10 +332,51 @@ export default function Insights() {
 
   const nameMap = useMemo<Record<number, string>>(() => {
     const m: Record<number, string> = {};
-    if (user) m[user.id] = `${user.name} (you)`;
-    teammates.forEach((t) => { m[t.id] = t.name; });
+    if (user) m[user.id] = t("insights.youSuffix", { name: user.name });
+    teammates.forEach((tm) => {
+      m[tm.id] = tm.name;
+    });
     return m;
-  }, [user, teammates]);
+  }, [user, teammates, t]);
+
+  const reviewSidebarItems = useMemo(() => {
+    if (!review) {
+      return [] as Array<{
+        key: "team" | "individual" | "actions";
+        label: string;
+        meta: string;
+        published: boolean;
+        publishedLabel: string;
+        dot: string;
+      }>;
+    }
+    return [
+      {
+        key: "team" as const,
+        label: t("insights.navTeam"),
+        meta: t("insights.themeCount", { count: review.themes.length }),
+        published: review.team_published,
+        publishedLabel: t("insights.teamLiveBadge"),
+        dot: "bg-emerald-400",
+      },
+      {
+        key: "individual" as const,
+        label: t("insights.navIndividual"),
+        meta: t("insights.personCount", { count: review.receiver_summaries.length }),
+        published: review.individuals_published,
+        publishedLabel: t("insights.individualLiveBadge"),
+        dot: "bg-violet-400",
+      },
+      {
+        key: "actions" as const,
+        label: t("insights.navActions"),
+        meta: t("insights.actionCount", { count: review.actions.length }),
+        published: review.team_published || review.individuals_published,
+        publishedLabel: t("insights.hasLiveBadge"),
+        dot: "bg-sky-400",
+      },
+    ];
+  }, [review, t]);
 
   const hydrateHiddenState = (r: ManagerReviewResponse) => {
     setHiddenThemeIds(new Set(r.themes.filter((x) => x.id != null && x.is_hidden).map((x) => x.id as number)));
@@ -370,10 +419,12 @@ export default function Insights() {
         setEvents(ev ?? []);
         if (r) hydrateHiddenState(r as ManagerReviewResponse);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : t("common.failedToLoad"))
+      )
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, navigate, cycleId]);
+  }, [user, authLoading, navigate, cycleId, t]);
 
   const markDirty = () => setIsDirty(true);
 
@@ -469,7 +520,7 @@ export default function Insights() {
       setReview(updated);
       hydrateHiddenState(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save review");
+      setError(e instanceof Error ? e.message : t("insights.failedSaveReview"));
     } finally {
       setSavingReview(false);
     }
@@ -498,7 +549,7 @@ export default function Insights() {
       await cyclesApi.publishTeam(cycleId);
       await refreshAfterPublish();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to publish team insights");
+      setError(e instanceof Error ? e.message : t("insights.failedPublishTeam"));
     } finally {
       setPublishingTeam(false);
     }
@@ -513,7 +564,7 @@ export default function Insights() {
       await cyclesApi.publishIndividuals(cycleId);
       await refreshAfterPublish();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to publish individual feedback");
+      setError(e instanceof Error ? e.message : t("insights.failedPublishIndividual"));
     } finally {
       setPublishingIndividuals(false);
     }
@@ -536,7 +587,7 @@ export default function Insights() {
       setAddActionScope("team");
       setAddActionReceiverId(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add action");
+      setError(e instanceof Error ? e.message : t("insights.failedAddAction"));
     } finally {
       setAddingAction(false);
     }
@@ -598,29 +649,27 @@ export default function Insights() {
               <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-surface-pill-border">
                 <div>
                   <h2 className="text-lg font-semibold text-surface-text-strong">
-                    {previewMode ? "Team view preview" : "Manager review"}
+                    {previewMode ? t("insights.teamViewPreview") : t("insights.managerReview")}
                   </h2>
                   <p className="text-surface-text-muted text-xs mt-0.5">
-                    {previewMode
-                      ? "Exactly what your team will see after publish"
-                      : "Use eye icons to control what the team sees, then publish each section"}
+                    {previewMode ? t("insights.previewSubtitle") : t("insights.reviewSubtitle")}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <div className="flex items-center gap-2">
                     {review.team_published && (
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/20">
-                        Team live
+                        {t("insights.teamLiveBadge")}
                       </span>
                     )}
                     {review.individuals_published && (
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-violet-500/10 text-violet-400/80 border border-violet-500/20">
-                        Individual live
+                        {t("insights.individualLiveBadge")}
                       </span>
                     )}
                     {!review.team_published && !review.individuals_published && (
                       <span className="text-xs px-2.5 py-1 rounded-full font-medium border bg-white/5 text-surface-text-muted border-white/10">
-                        Compiled · Unpublished
+                        {t("insights.compiledUnpublished")}
                       </span>
                     )}
                   </div>
@@ -634,7 +683,7 @@ export default function Insights() {
                           : "text-surface-text-muted hover:bg-white/5"
                       }`}
                     >
-                      Review
+                      {t("insights.reviewModeTab")}
                     </button>
                     <button
                       type="button"
@@ -645,7 +694,7 @@ export default function Insights() {
                           : "text-surface-text-muted hover:bg-white/5"
                       }`}
                     >
-                      Preview
+                      {t("insights.previewModeTab")}
                     </button>
                   </div>
                 </div>
@@ -656,7 +705,7 @@ export default function Insights() {
                 <div className="p-6 space-y-6">
                   {themes && themes.themes.filter((th) => !th.is_hidden).length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Themes</h3>
+                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.themes")}</h3>
                       <div className="grid sm:grid-cols-2 gap-3">
                         {themes.themes.filter((th) => !th.is_hidden).map((th, i) => (
                           <div key={i} className="rounded-xl border border-surface-pill-border overflow-hidden">
@@ -679,7 +728,7 @@ export default function Insights() {
                   )}
                   {summary?.summary_text && (
                     <div>
-                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Cycle summary</h3>
+                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.cycleSummary")}</h3>
                       <div className="grid sm:grid-cols-2 gap-3">
                         {parseBrief(summary.summary_text).map((sec, si) => (
                           <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
@@ -699,7 +748,7 @@ export default function Insights() {
                   )}
                   {previewTeamActions.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Team actions</h3>
+                      <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.teamActions")}</h3>
                       <div className="space-y-2">
                         {previewTeamActions.map((a) => (
                           <div key={a.id} className="flex items-start gap-3 rounded-xl border border-surface-pill-border px-4 py-3">
@@ -715,7 +764,7 @@ export default function Insights() {
                     </div>
                   )}
                   {(!themes || themes.themes.filter(th => !th.is_hidden).length === 0) && !summary?.summary_text && previewTeamActions.length === 0 && (
-                    <p className="text-surface-text-muted text-sm">Nothing visible to the team yet. Toggle back to Review to include content.</p>
+                    <p className="text-surface-text-muted text-sm">{t("insights.nothingVisiblePreview")}</p>
                   )}
                 </div>
               )}
@@ -726,32 +775,7 @@ export default function Insights() {
 
                   {/* Left sidebar */}
                   <nav className="w-52 shrink-0 border-r border-surface-pill-border flex flex-col py-3 gap-0.5 px-2">
-                    {([
-                      {
-                        key: "team" as const,
-                        label: "Team",
-                        meta: `${review.themes.length} theme${review.themes.length !== 1 ? "s" : ""}`,
-                        published: review.team_published,
-                        publishedLabel: "Team live",
-                        dot: "bg-emerald-400",
-                      },
-                      {
-                        key: "individual" as const,
-                        label: "Individual",
-                        meta: `${review.receiver_summaries.length} person${review.receiver_summaries.length !== 1 ? "s" : ""}`,
-                        published: review.individuals_published,
-                        publishedLabel: "Individual live",
-                        dot: "bg-violet-400",
-                      },
-                      {
-                        key: "actions" as const,
-                        label: "Actions",
-                        meta: `${review.actions.length} action${review.actions.length !== 1 ? "s" : ""}`,
-                        published: review.team_published || review.individuals_published,
-                        publishedLabel: "Has live",
-                        dot: "bg-sky-400",
-                      },
-                    ] as const).map((item) => (
+                    {reviewSidebarItems.map((item) => (
                       <button
                         key={item.key}
                         type="button"
@@ -786,7 +810,7 @@ export default function Insights() {
                         {/* Compiled brief */}
                         {review.summary_text && (
                           <div>
-                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Compiled brief</h3>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.compiledBrief")}</h3>
                             <div className="grid sm:grid-cols-2 gap-3">
                               {parseBrief(review.summary_text).map((sec, si) => (
                                 <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
@@ -810,7 +834,7 @@ export default function Insights() {
                         {/* Themes */}
                         {review.themes.length > 0 && (
                           <div>
-                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Themes</h3>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.themes")}</h3>
                             <div className="grid sm:grid-cols-2 gap-3">
                               {review.themes.map((th) => {
                                 const hidden = th.id != null && hiddenThemeIds.has(th.id);
@@ -847,18 +871,18 @@ export default function Insights() {
                         )}
 
                         {review.themes.length === 0 && !review.summary_text && (
-                          <p className="text-surface-text-muted text-sm">No team content compiled yet.</p>
+                          <p className="text-surface-text-muted text-sm">{t("insights.noTeamContent")}</p>
                         )}
 
                         {/* Team section action bar */}
                         <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50 mt-auto">
                           <div className="flex items-center gap-2">
-                            {isDirty && <span className="text-xs text-amber-400/80">Unsaved changes</span>}
-                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">Review saved</span>}
+                            {isDirty && <span className="text-xs text-amber-400/80">{t("insights.unsavedChanges")}</span>}
+                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">{t("insights.reviewSaved")}</span>}
                           </div>
                           <div className="flex gap-2">
                             <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
-                              {savingReview ? "Saving…" : "Save"}
+                              {savingReview ? t("common.saving") : t("common.save")}
                             </button>
                             <button
                               type="button"
@@ -866,7 +890,11 @@ export default function Insights() {
                               disabled={publishingTeam || review.team_published}
                               className="px-5 py-2 rounded-full text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-all"
                             >
-                              {publishingTeam ? "Publishing…" : review.team_published ? "Team published" : "Publish team insights"}
+                              {publishingTeam
+                                ? t("insights.publishing")
+                                : review.team_published
+                                  ? t("insights.teamPublished")
+                                  : t("insights.publishTeamInsights")}
                             </button>
                           </div>
                         </div>
@@ -880,11 +908,15 @@ export default function Insights() {
                         {/* Structured feedback per person */}
                         {review.receiver_summaries.length > 0 && (
                           <div>
-                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Structured feedback</h3>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.structuredFeedback")}</h3>
                             <div className="space-y-3">
                               {review.receiver_summaries.map((rs) => {
                                 const hidden = rs.id != null && hiddenReceiverSummaryIds.has(rs.id);
-                                const name = rs.receiver_id != null ? (nameMap[rs.receiver_id] ?? `Person #${rs.receiver_id}`) : "Unknown";
+                                const name =
+                                  rs.receiver_id != null
+                                    ? (nameMap[rs.receiver_id] ??
+                                      t("insights.personFallback", { id: rs.receiver_id }))
+                                    : t("insights.unknownPerson");
                                 return (
                                   <div key={rs.id ?? rs.receiver_id} className={`rounded-xl border overflow-hidden transition-all ${hidden ? "border-dashed border-surface-pill-border opacity-50" : "border-surface-pill-border"}`}>
                                     <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-pill-border/40">
@@ -902,7 +934,7 @@ export default function Insights() {
                                       <>
                                         {rs.comment_snippets_helpful.length > 0 && (
                                           <div className="border-b border-surface-pill-border/20">
-                                            <p className="text-xs font-medium text-surface-text-muted px-4 pt-2.5 pb-1">What helped</p>
+                                            <p className="text-xs font-medium text-surface-text-muted px-4 pt-2.5 pb-1">{t("insights.whatHelped")}</p>
                                             {rs.comment_snippets_helpful.map((s, si) => {
                                               const ptHidden = rs.id != null && (hiddenHelpfulIndices[rs.id]?.has(si) ?? false);
                                               return (
@@ -917,7 +949,7 @@ export default function Insights() {
                                         )}
                                         {rs.comment_snippets_improvement.length > 0 && (
                                           <div>
-                                            <p className="text-xs font-medium text-surface-text-muted px-4 pt-2.5 pb-1">Could improve</p>
+                                            <p className="text-xs font-medium text-surface-text-muted px-4 pt-2.5 pb-1">{t("insights.couldImprove")}</p>
                                             {rs.comment_snippets_improvement.map((s, si) => {
                                               const ptHidden = rs.id != null && (hiddenImprovementIndices[rs.id]?.has(si) ?? false);
                                               return (
@@ -945,7 +977,7 @@ export default function Insights() {
                         {/* Directed open feedback (from rants) */}
                         {review.directed_segments.length > 0 && (
                           <div>
-                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">Directed open feedback</h3>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.directedOpen")}</h3>
                             <div className="space-y-2">
                               {review.directed_segments.map((seg) => {
                                 const segId = (seg as { id?: number | null }).id ?? null;
@@ -954,8 +986,11 @@ export default function Insights() {
                                 const segTheme = (seg as { theme?: string }).theme ?? "";
                                 const segSnippet = (seg as { snippet?: string }).snippet ?? "";
                                 const isHidden = segId != null && hiddenDirectedSegmentIds.has(segId);
-                                const dotCls = SENTIMENT_CONFIG[segSentiment]?.dot ?? "bg-surface-text-muted";
-                                const recName = receiverId != null ? (nameMap[receiverId] ?? `Person #${receiverId}`) : "Unknown";
+                                const dotCls = SENTIMENT_STYLE[segSentiment]?.dot ?? "bg-surface-text-muted";
+                                const recName =
+                                  receiverId != null
+                                    ? (nameMap[receiverId] ?? t("insights.personFallback", { id: receiverId }))
+                                    : t("insights.unknownPerson");
                                 return (
                                   <div key={segId ?? `${receiverId}-${segTheme}-${segSnippet.slice(0, 8)}`} className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-all ${isHidden ? "opacity-40 border-dashed border-surface-pill-border" : "border-surface-pill-border"}`}>
                                     <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
@@ -974,18 +1009,18 @@ export default function Insights() {
                         )}
 
                         {review.receiver_summaries.length === 0 && review.directed_segments.length === 0 && (
-                          <p className="text-surface-text-muted text-sm">No individual feedback compiled yet.</p>
+                          <p className="text-surface-text-muted text-sm">{t("insights.noIndividual")}</p>
                         )}
 
                         {/* Individual section action bar */}
                         <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
                           <div className="flex items-center gap-2">
-                            {isDirty && <span className="text-xs text-amber-400/80">Unsaved changes</span>}
-                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">Review saved</span>}
+                            {isDirty && <span className="text-xs text-amber-400/80">{t("insights.unsavedChanges")}</span>}
+                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">{t("insights.reviewSaved")}</span>}
                           </div>
                           <div className="flex gap-2">
                             <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
-                              {savingReview ? "Saving…" : "Save"}
+                              {savingReview ? t("common.saving") : t("common.save")}
                             </button>
                             <button
                               type="button"
@@ -993,7 +1028,11 @@ export default function Insights() {
                               disabled={publishingIndividuals || review.individuals_published}
                               className="px-5 py-2 rounded-full text-sm font-semibold border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 disabled:opacity-40 transition-all"
                             >
-                              {publishingIndividuals ? "Publishing…" : review.individuals_published ? "Individual published" : "Publish individual feedback"}
+                              {publishingIndividuals
+                                ? t("insights.publishing")
+                                : review.individuals_published
+                                  ? t("insights.individualPublished")
+                                  : t("insights.publishIndividualFeedback")}
                             </button>
                           </div>
                         </div>
@@ -1008,12 +1047,12 @@ export default function Insights() {
                         {review.actions.filter((a) => a.is_ai_generated).length > 0 && (
                           <div>
                             <div className="flex items-center gap-2 mb-3">
-                              <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider">AI Suggested</h3>
+                              <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider">{t("insights.aiSuggested")}</h3>
                               <span className="text-xs text-surface-text-muted bg-white/5 px-2 py-0.5 rounded-full border border-surface-pill-border">
                                 {review.actions.filter((a) => a.is_ai_generated).length}
                               </span>
                             </div>
-                            <p className="text-xs text-surface-text-muted mb-3">Generated at compile time. Edit or hide before publishing.</p>
+                            <p className="text-xs text-surface-text-muted mb-3">{t("insights.aiNote")}</p>
                             <div className="space-y-2">
                               {review.actions.filter((a) => a.is_ai_generated).map((a) => (
                                 <ActionRow
@@ -1038,7 +1077,7 @@ export default function Insights() {
                         {/* Manager-created */}
                         {review.actions.filter((a) => !a.is_ai_generated).length > 0 && (
                           <div>
-                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-3">Added by you</h3>
+                            <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-3">{t("insights.addedByYou")}</h3>
                             <div className="space-y-2">
                               {review.actions.filter((a) => !a.is_ai_generated).map((a) => (
                                 <ActionRow
@@ -1061,51 +1100,51 @@ export default function Insights() {
                         )}
 
                         {review.actions.length === 0 && !addActionOpen && (
-                          <p className="text-surface-text-muted text-sm">No actions yet. AI suggestions are generated at compile time, or add one manually below.</p>
+                          <p className="text-surface-text-muted text-sm">{t("insights.noActionsYet")}</p>
                         )}
 
                         {/* Add action form */}
                         {addActionOpen ? (
                           <div className="rounded-xl border border-surface-pill-border overflow-hidden">
                             <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-pill-border/40">
-                              <span className="text-sm font-medium text-surface-text-strong flex-1">New action</span>
+                              <span className="text-sm font-medium text-surface-text-strong flex-1">{t("insights.newAction")}</span>
                               <button type="button" onClick={() => { setAddActionOpen(false); setAddActionText(""); setAddActionScope("team"); setAddActionReceiverId(null); }} className="text-xs text-surface-text-muted hover:text-surface-text transition-colors">
-                                Cancel
+                                {t("common.cancel")}
                               </button>
                             </div>
                             <div className="p-4 space-y-4">
                               <div>
-                                <label className="text-xs font-medium text-surface-text-muted mb-2 block">Scope</label>
+                                <label className="text-xs font-medium text-surface-text-muted mb-2 block">{t("insights.scope")}</label>
                                 <div className="flex rounded-lg border border-surface-pill-border overflow-hidden text-sm w-fit">
                                   <button type="button" onClick={() => { setAddActionScope("team"); setAddActionReceiverId(null); }} className={`px-4 py-2 transition-colors ${addActionScope === "team" ? "bg-surface-accent-cyan/15 text-surface-accent-cyan" : "text-surface-text-muted hover:bg-white/5"}`}>
-                                    Team
+                                    {t("insights.navTeam")}
                                   </button>
                                   <button type="button" onClick={() => setAddActionScope("individual")} className={`px-4 py-2 border-l border-surface-pill-border transition-colors ${addActionScope === "individual" ? "bg-surface-accent-cyan/15 text-surface-accent-cyan" : "text-surface-text-muted hover:bg-white/5"}`}>
-                                    Individual
+                                    {t("insights.navIndividual")}
                                   </button>
                                 </div>
                               </div>
                               {addActionScope === "individual" && (
                                 <div>
-                                  <label className="text-xs font-medium text-surface-text-muted mb-1.5 block">Team member</label>
+                                  <label className="text-xs font-medium text-surface-text-muted mb-1.5 block">{t("insights.teamMember")}</label>
                                   <select
                                     value={addActionReceiverId ?? ""}
                                     onChange={(e) => setAddActionReceiverId(e.target.value ? Number(e.target.value) : null)}
                                     className="bg-surface-bg border border-surface-pill-border rounded-lg px-3 py-2 text-sm text-surface-text focus:outline-none focus:border-surface-accent-cyan/50"
                                   >
-                                    <option value="">Select person…</option>
-                                    {teammates.map((t) => (
-                                      <option key={t.id} value={t.id}>{t.name}</option>
+                                    <option value="">{t("insights.selectPerson")}</option>
+                                    {teammates.map((tm) => (
+                                      <option key={tm.id} value={tm.id}>{tm.name}</option>
                                     ))}
                                   </select>
                                 </div>
                               )}
                               <div>
-                                <label className="text-xs font-medium text-surface-text-muted mb-1.5 block">Action</label>
+                                <label className="text-xs font-medium text-surface-text-muted mb-1.5 block">{t("insights.action")}</label>
                                 <textarea
                                   value={addActionText}
                                   onChange={(e) => setAddActionText(e.target.value)}
-                                  placeholder="Describe the action…"
+                                  placeholder={t("insights.describeActionPlaceholder")}
                                   className="w-full bg-surface-bg border border-surface-pill-border rounded-lg px-3 py-2 text-sm text-surface-text resize-none focus:outline-none focus:border-surface-accent-cyan/50 min-h-[100px]"
                                 />
                               </div>
@@ -1116,7 +1155,7 @@ export default function Insights() {
                                   disabled={addingAction || !addActionText.trim() || (addActionScope === "individual" && !addActionReceiverId)}
                                   className="px-5 py-2 rounded-full text-sm font-medium border border-surface-accent-cyan/40 text-surface-accent-cyan hover:bg-surface-accent-cyan/10 disabled:opacity-40 transition-all"
                                 >
-                                  {addingAction ? "Adding…" : "Add action"}
+                                  {addingAction ? t("insights.adding") : t("insights.newAction")}
                                 </button>
                               </div>
                             </div>
@@ -1127,15 +1166,15 @@ export default function Insights() {
                             onClick={() => setAddActionOpen(true)}
                             className="w-full rounded-xl border border-dashed border-surface-pill-border px-4 py-3 text-sm text-surface-text-muted hover:text-surface-text hover:border-white/20 hover:bg-white/[0.02] transition-all text-left"
                           >
-                            + Add action
+                            {t("insights.addActionCta")}
                           </button>
                         )}
 
                         {/* Actions bar — save only (actions publish with their respective section) */}
                         <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
-                          <p className="text-xs text-surface-text-muted">Actions publish with their respective Team or Individual section</p>
+                          <p className="text-xs text-surface-text-muted">{t("insights.actionsPublishHint")}</p>
                           <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
-                            {savingReview ? "Saving…" : isDirty ? "Save changes" : "Saved"}
+                            {savingReview ? t("common.saving") : isDirty ? t("insights.saveChanges") : t("common.saved")}
                           </button>
                         </div>
                       </div>
@@ -1153,7 +1192,7 @@ export default function Insights() {
 
               {themes.themes.length > 0 && (
                 <div>
-                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">Team themes</h2>
+                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">{t("insights.teamThemes")}</h2>
                   <div className="grid sm:grid-cols-2 gap-3">
                     {themes.themes.map((th, i) => (
                       <div key={i} className="rounded-xl border border-surface-pill-border overflow-hidden">
@@ -1183,7 +1222,7 @@ export default function Insights() {
 
               {summary?.summary_text && (
                 <div>
-                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">Cycle summary</h2>
+                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">{t("insights.cycleSummary")}</h2>
                   <div className="grid sm:grid-cols-2 gap-3">
                     {parseBrief(summary.summary_text).map((sec, si) => (
                       <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
@@ -1206,7 +1245,7 @@ export default function Insights() {
 
               {summary && summary.actions.length > 0 && (
                 <div>
-                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">Team actions</h2>
+                  <h2 className="text-base font-semibold text-surface-text-strong mb-3">{t("insights.teamActions")}</h2>
                   <div className="space-y-2">
                     {summary.actions.map((a) => (
                       <div key={a.id} className="flex items-start gap-3 rounded-xl border border-surface-pill-border px-4 py-3">
@@ -1223,15 +1262,13 @@ export default function Insights() {
               )}
 
               {themes.themes.length === 0 && !summary?.summary_text && (
-                <p className="text-surface-text-muted text-sm">
-                  Team insights will appear here after the cycle is compiled and published.
-                </p>
+                <p className="text-surface-text-muted text-sm">{t("insights.teamInsightsPlaceholder")}</p>
               )}
             </div>
           )}
 
           {!loading && !showReview && !themes && (
-            <p className="text-surface-text-muted text-sm">Insights are not available for this cycle yet.</p>
+            <p className="text-surface-text-muted text-sm">{t("insights.notAvailable")}</p>
           )}
 
           {/* ── CYCLE HISTORY ── */}
@@ -1239,24 +1276,27 @@ export default function Insights() {
             <div className="rounded-2xl border border-surface-pill-border bg-surface-card overflow-hidden">
               <div className="px-6 py-4 border-b border-surface-pill-border">
                 <h2 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider">
-                  {isManagerView ? "Cycle history" : "Cycle timeline"}
+                  {isManagerView ? t("insights.cycleHistory") : t("insights.cycleTimeline")}
                 </h2>
               </div>
               <div className="px-6 py-4">
                 <ol className="relative border-l border-surface-pill-border/50 ml-2 space-y-0">
                   {events.map((ev, i) => {
-                    const cfg = EVENT_CONFIG[ev.event_type] ?? { label: ev.event_type, dot: "bg-surface-text-muted/40" };
+                    const dotCls = EVENT_DOT[ev.event_type] ?? "bg-surface-text-muted/40";
+                    const eventLabel = t(`insights.events.${ev.event_type}`, {
+                      defaultValue: ev.event_type,
+                    });
                     return (
                       <li key={ev.id ?? i} className="ml-5 pb-5 last:pb-0">
-                        <span className={`absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-card ${cfg.dot}`} />
-                        <p className="text-sm font-medium text-surface-text-strong leading-tight">{cfg.label}</p>
+                        <span className={`absolute -left-[5px] mt-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-card ${dotCls}`} />
+                        <p className="text-sm font-medium text-surface-text-strong leading-tight">{eventLabel}</p>
                         {ev.actor_name && (
                           <p className="text-xs text-surface-text-muted mt-0.5">{ev.actor_name}</p>
                         )}
                         {ev.note && isManagerView && (
                           <p className="text-xs text-surface-text-muted/70 mt-0.5 italic">{ev.note}</p>
                         )}
-                        <p className="text-xs text-surface-text-muted/60 mt-1">{formatEventTime(ev.created_at)}</p>
+                        <p className="text-xs text-surface-text-muted/60 mt-1">{formatEventTime(ev.created_at, i18n.language)}</p>
                       </li>
                     );
                   })}

@@ -3,12 +3,14 @@
  * Uses GET /auth/me, GET /cycles, GET /admin/teams (admin) to show live counts.
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { adminApi, cyclesApi } from "../api/client";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
 export default function Concept() {
+  const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const [teamsCount, setTeamsCount] = useState<number | null>(null);
   const [cyclesCount, setCyclesCount] = useState<number | null>(null);
@@ -30,13 +32,13 @@ export default function Concept() {
         const cycles = await cyclesApi.listCycles();
         if (!cancelled) setCyclesCount(cycles.length);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
+        if (!cancelled) setError(e instanceof Error ? e.message : t("common.failedToLoad"));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, t]);
 
   if (authLoading) {
     return (
@@ -49,26 +51,11 @@ export default function Concept() {
   return (
     <section className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
       <h1 className="text-3xl sm:text-4xl font-bold text-surface-text-strong tracking-tight mb-6">
-        The concept
+        {t("concept.title")}
       </h1>
-      <p className="text-surface-text leading-relaxed mb-6">
-        Surface helps small companies collect honest, mostly anonymous feedback from
-        employees and turn it into clear, aggregated themes and actions for managers.
-        The product focuses on enabling “venting” and structured peer/manager feedback
-        while protecting anonymity and giving managers a simple dashboard view of team
-        health.
-      </p>
-      <p className="text-surface-text leading-relaxed mb-6">
-        Employees submit one anonymous rant per cycle (with optional tags) and
-        structured feedback for every other team member. Managers see anonymized
-        themes, example comments (when thresholds are met), and can log multiple
-        actions per theme so the loop closes and people feel heard.
-      </p>
-      <p className="text-surface-text leading-relaxed mb-10">
-        The system uses AI to de-identify text and infer theme and sentiment; all
-        feedback is aggregated into anonymized insights with configurable anonymity
-        thresholds.
-      </p>
+      <p className="text-surface-text leading-relaxed mb-6">{t("concept.p1")}</p>
+      <p className="text-surface-text leading-relaxed mb-6">{t("concept.p2")}</p>
+      <p className="text-surface-text leading-relaxed mb-10">{t("concept.p3")}</p>
 
       {error && (
         <ErrorMessage message={error} onRetry={() => setError(null)} />
@@ -77,19 +64,19 @@ export default function Concept() {
       {user && (
         <div className="rounded-2xl bg-surface-card border border-surface-pill-border p-6">
           <h2 className="text-lg font-semibold text-surface-text-strong mb-3">
-            Your data
+            {t("concept.dataTitle")}
           </h2>
           <div className="flex flex-wrap gap-4 text-surface-text">
             {user.role === "admin" && teamsCount !== null && (
               <span>
                 <strong className="text-surface-text-strong">{teamsCount}</strong>{" "}
-                team{teamsCount !== 1 ? "s" : ""} in the org
+                {t("concept.teamsInOrg", { count: teamsCount })}
               </span>
             )}
             {cyclesCount !== null && (
               <span>
                 <strong className="text-surface-text-strong">{cyclesCount}</strong>{" "}
-                feedback cycle{cyclesCount !== 1 ? "s" : ""} for your team
+                {t("concept.cyclesTeam", { count: cyclesCount })}
               </span>
             )}
           </div>
