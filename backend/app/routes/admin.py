@@ -134,7 +134,9 @@ def _invite_supabase_auth_user(email: str) -> str | None:
 
     base = settings.SUPABASE_URL.rstrip("/")
     public_base = _auth_public_base_url()
-    invite_redirect = f"{public_base}/auth/callback"
+    # Invite emails must land on /auth/callback?flow=invite so the SPA sends users to set
+    # a password (invite sessions are SIGNED_IN, not PASSWORD_RECOVERY).
+    invite_redirect = f"{public_base}/auth/callback?flow=invite"
     recovery_redirect = f"{public_base}/auth/reset-password"
 
     qs = urlencode({"redirect_to": invite_redirect})

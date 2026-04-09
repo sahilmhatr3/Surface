@@ -61,6 +61,7 @@
     "notRecoverySession": "Use the password reset link from your email to open this page. If you are still signed in as another account, sign out first, then open the link again.",
     "requestNew": "Request a new link",
     "title": "Set a new password",
+    "titleInvite": "Create your password",
     "newPassword": "New password (min 8 characters)",
     "confirmPassword": "Confirm password",
     "tooShort": "Password must be at least 8 characters.",

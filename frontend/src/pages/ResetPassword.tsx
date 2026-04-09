@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../lib/supabase";
 import { isPasswordRecoverySession } from "../lib/supabaseSession";
@@ -12,9 +12,22 @@ const pillInput =
  * We must not treat an unrelated existing session as valid — that would change the wrong account
  * if user A is still logged in while opening B's reset link (until B's tokens are applied).
  */
+function canSetPasswordHere(
+  session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"],
+  flowInvite: boolean
+): boolean {
+  if (isPasswordRecoverySession(session)) return true;
+  // Invite links use ?flow=invite; require invited_at so the query alone cannot unlock
+  // password changes for normal (non-invited) accounts.
+  if (flowInvite && session?.user?.invited_at) return true;
+  return false;
+}
+
 export default function ResetPassword() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const flowInvite = searchParams.get("flow") === "invite";
   const [ready, setReady] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -48,7 +61,7 @@ export default function ResetPassword() {
         const {
           data: { session },
         } = await supabase.auth.getSession();
-        if (isPasswordRecoverySession(session)) {
+        if (canSetPasswordHere(session, flowInvite)) {
           markReady();
           return;
         }
@@ -58,7 +71,7 @@ export default function ResetPassword() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (isPasswordRecoverySession(session)) {
+      if (canSetPasswordHere(session, flowInvite)) {
         markReady();
         return;
       }
@@ -74,6 +87,9 @@ export default function ResetPassword() {
       if (event === "PASSWORD_RECOVERY" && session) {
         markReady();
       }
+      if (flowInvite && event === "SIGNED_IN" && session) {
+        markReady();
+      }
     });
 
     void pollForRecovery();
@@ -82,7 +98,7 @@ export default function ResetPassword() {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [t, retryNonce]);
+  }, [t, retryNonce, flowInvite]);
 
   const handleSignOutAndRetry = async () => {
     await supabase.auth.signOut();
@@ -95,7 +111,8 @@ export default function ResetPassword() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!isPasswordRecoverySession((await supabase.auth.getSession()).data.session)) {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    if (!canSetPasswordHere(s, flowInvite)) {
       setWrongAccount(true);
       setError(t("resetPassword.notRecoverySession"));
       return;
@@ -161,7 +178,7 @@ export default function ResetPassword() {
     <section className="min-h-[calc(100vh-6rem)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-4">
         <h2 className="text-2xl font-bold text-surface-text-strong text-center">
-          {t("resetPassword.title")}
+          {flowInvite ? t("resetPassword.titleInvite") : t("resetPassword.title")}
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input

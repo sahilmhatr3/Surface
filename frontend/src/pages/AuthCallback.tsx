@@ -32,6 +32,13 @@ export default function AuthCallback() {
         navigate("/auth/reset-password", { replace: true });
         return true;
       }
+      const flowInvite =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("flow") === "invite";
+      if (flowInvite) {
+        navigate("/auth/reset-password?flow=invite", { replace: true });
+        return true;
+      }
       try {
         await authApi.me();
         if (cancelled) return true;
