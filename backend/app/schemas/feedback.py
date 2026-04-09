@@ -32,7 +32,7 @@ class RantResponse(BaseModel):
 
 
 class StructuredFeedbackScores(BaseModel):
-    """Scores for structured feedback dimensions (1–5). Start with support and communication."""
+    """Structured scores (1–5). Keys are legacy: support = Performance, communication = Impact on team."""
 
     support: int = Field(..., ge=SCORE_MIN, le=SCORE_MAX)
     communication: int = Field(..., ge=SCORE_MIN, le=SCORE_MAX)
