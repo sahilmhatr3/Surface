@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "../lib/supabase";
+import { isPasswordRecoverySession } from "../lib/supabaseSession";
 import { authApi, ApiError } from "../api/client";
 import type { UserResponse } from "../api/types";
 
@@ -47,6 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { profile: null };
     }
+    // Password recovery sessions must not be treated as a normal login —
+    // the user is mid-reset and should not see the app as authenticated.
+    if (isPasswordRecoverySession(session)) {
+      setUser(null);
+      setLoading(false);
+      return { profile: null };
+    }
     setLoading(true);
     try {
       const profile = await authApi.me();
@@ -69,7 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // PASSWORD_RECOVERY is a scoped session just for resetting a password.
+      // Treat it the same as no session so the navbar/app stays in logged-out state.
+      if (event === "PASSWORD_RECOVERY" || isPasswordRecoverySession(session)) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
       if (!session) {
         setUser(null);
         setLoading(false);
