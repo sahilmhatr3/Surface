@@ -56,8 +56,9 @@ class Settings(BaseSettings):
         out = [p.strip().rstrip("/") for p in s.split(",") if p.strip()]
         return out or default
 
-    # Anonymity (MVP: single threshold)
-    ANONYMITY_THRESHOLD: int = Field(default=1, ge=1, description="Min distinct respondents before showing comments")
+    # Anonymity (MVP: single threshold) — applies to team rant theme examples and directed rant segments only,
+    # not to per-receiver structured summaries (those are always shown when compiled).
+    ANONYMITY_THRESHOLD: int = Field(default=1, ge=1, description="Min distinct respondents for theme/rant snippet visibility")
 
     # OpenAI (for rant de-identify and theme/sentiment). Set in .env; required for POST /feedback/rant.
     OPENAI_API_KEY: str | None = Field(default=None, description="OpenAI API key")

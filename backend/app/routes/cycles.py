@@ -34,6 +34,10 @@ router = APIRouter()
 BELOW_THRESHOLD_NOTE = "Theme expressed but not enough responses to show anonymized example comments."
 DIRECTED_RANT_BELOW_THRESHOLD_NOTE = "Open feedback was directed at you but there are not enough responses to show anonymized snippets."
 
+# Per-receiver structured summaries (CycleReceiverSummary) are always returned in full when present:
+# compiled snippets are AI-synthesized and non-verbatim. ANONYMITY_THRESHOLD still applies to
+# team-level rant themes and directed rant segments only.
+
 
 def _maybe_auto_close(db: Session, cycle: FeedbackCycle) -> None:
     """If cycle is open and end_date has passed, set status to closed."""
@@ -262,8 +266,6 @@ def get_manager_summary(
             comment_snippets_improvement=[],
             below_threshold_note="No summary available for this cycle.",
         )
-    threshold = settings.ANONYMITY_THRESHOLD
-    below = row.respondent_count < threshold
     return ManagerSummaryResponse(
         id=row.id,
         receiver_id=row.receiver_id,
@@ -273,9 +275,9 @@ def get_manager_summary(
         sentiment=row.sentiment,
         strength_score=row.strength_score,
         is_hidden=row.is_hidden,
-        comment_snippets_helpful=[] if below else (row.snippets_helpful or []),
-        comment_snippets_improvement=[] if below else (row.snippets_improvement or []),
-        below_threshold_note=BELOW_THRESHOLD_NOTE if below else None,
+        comment_snippets_helpful=list(row.snippets_helpful or []),
+        comment_snippets_improvement=list(row.snippets_improvement or []),
+        below_threshold_note=None,
     )
 
 
@@ -288,7 +290,7 @@ def get_incoming_feedback(
     """
     All feedback about the current user for this cycle: structured (scores + comments) and directed open feedback.
     After compile, feedback is manager-only until publish. Employees only see after publish.
-    Anonymity threshold applied so the receiver can never infer senders.
+    Structured compiled insights are always shown when present. Anonymity threshold applies only to directed rant segments.
     """
     cycle = _get_cycle(db, cycle_id)
     _require_team_member(cycle, current_user)
@@ -310,10 +312,8 @@ def get_incoming_feedback(
             if (not manager_view) and row.is_hidden:
                 row = None
         if row:
-            threshold = settings.ANONYMITY_THRESHOLD
-            below = row.respondent_count < threshold
-            helpful = [] if below else list(row.snippets_helpful or [])
-            improvement = [] if below else list(row.snippets_improvement or [])
+            helpful = list(row.snippets_helpful or [])
+            improvement = list(row.snippets_improvement or [])
             # Filter per-point indices hidden by manager for non-manager viewers
             if not manager_view:
                 if helpful and row.hidden_helpful_indices:
@@ -333,7 +333,7 @@ def get_incoming_feedback(
                 is_hidden=row.is_hidden,
                 comment_snippets_helpful=helpful,
                 comment_snippets_improvement=improvement,
-                below_threshold_note=BELOW_THRESHOLD_NOTE if below else None,
+                below_threshold_note=None,
             )
         else:
             structured = ManagerSummaryResponse(
@@ -559,9 +559,9 @@ def get_manager_review(
             is_hidden=r.is_hidden,
             hidden_helpful_indices=list(r.hidden_helpful_indices or []),
             hidden_improvement_indices=list(r.hidden_improvement_indices or []),
-            comment_snippets_helpful=[] if r.respondent_count < threshold else (r.snippets_helpful or []),
-            comment_snippets_improvement=[] if r.respondent_count < threshold else (r.snippets_improvement or []),
-            below_threshold_note=BELOW_THRESHOLD_NOTE if r.respondent_count < threshold else None,
+            comment_snippets_helpful=list(r.snippets_helpful or []),
+            comment_snippets_improvement=list(r.snippets_improvement or []),
+            below_threshold_note=None,
         )
         for r in receiver_rows
     ]

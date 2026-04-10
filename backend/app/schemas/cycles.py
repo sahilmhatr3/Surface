@@ -34,7 +34,7 @@ class ThemesResponse(BaseModel):
 
 
 class ManagerSummaryResponse(BaseModel):
-    """Aggregated structured feedback about the manager (only when threshold met)."""
+    """Aggregated structured feedback for one receiver (scores + compiled snippets when a summary row exists)."""
 
     id: int | None = None
     receiver_id: int | None = None
@@ -147,7 +147,7 @@ class CycleEventResponse(BaseModel):
 class IncomingFeedbackResponse(BaseModel):
     """
     All feedback about the current user for a cycle: structured (scores + comments) and directed rant segments.
-    Both sections apply anonymity threshold; receiver can never infer senders.
+    Structured compiled insights are always included when present; anonymity threshold applies only to directed rant segments.
     """
 
     cycle_id: int
