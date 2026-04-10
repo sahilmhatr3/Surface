@@ -4,7 +4,8 @@
  * Font: Satoshi (loaded in index.html via Fontshare).
  */
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 import {
   Users,
   Clock,
@@ -877,6 +878,15 @@ function LandingFooter() {
 
 export default function Landing() {
   const [activeSection, setActiveSection] = useState<SectionId | null>("hero");
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+
+  // Logged-in users go straight to the app (password recovery keeps user=null until reset completes).
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   // Track which section is in the middle of the viewport
   useEffect(() => {

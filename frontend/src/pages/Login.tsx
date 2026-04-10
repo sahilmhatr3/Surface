@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useAuth } from "../hooks/useAuth";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 const pillInput =
   "w-full px-4 py-3 rounded-full bg-white/5 border border-surface-pill-border text-surface-text placeholder-surface-text-muted focus:outline-none focus:border-surface-accent-cyan/50 focus:ring-1 focus:ring-surface-accent-cyan/30 transition-all";
@@ -16,12 +17,19 @@ function authMessage(code: string | null, t: TFunction): string | null {
 
 export default function Login() {
   const { t } = useTranslation();
-  const { login, error: authError, refreshUser } = useAuth();
+  const { user, loading: authLoading, login, error: authError, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Signed-in app users should not see this form (recovery keeps user=null in useAuth).
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +53,15 @@ export default function Login() {
   };
 
   const displayError = error ?? authMessage(authError, t);
+
+  if (!authLoading && user) {
+    return (
+      <section className="min-h-[calc(100vh-6rem)] flex flex-col items-center justify-center gap-3 px-4 py-12">
+        <LoadingSpinner />
+        <p className="text-sm text-surface-text-muted">{t("login.redirecting")}</p>
+      </section>
+    );
+  }
 
   return (
     <section className="min-h-[calc(100vh-6rem)] flex items-center justify-center px-4 py-12">

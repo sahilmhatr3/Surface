@@ -33,7 +33,8 @@
     "forgotPassword": "Forgot password?",
     "loginFailed": "Login failed",
     "noAppProfile": "You're signed in, but your account isn't set up in Surface yet. Ask an administrator to add you.",
-    "profileFetchFailed": "Signed in, but the app could not load your profile. Check the API URL (VITE_API_URL) and CORS (CORS_ORIGINS), then redeploy."
+    "profileFetchFailed": "Signed in, but the app could not load your profile. Check the API URL (VITE_API_URL) and CORS (CORS_ORIGINS), then redeploy.",
+    "redirecting": "Redirecting…"
   },
   "forgotPassword": {
     "title": "Forgot password",

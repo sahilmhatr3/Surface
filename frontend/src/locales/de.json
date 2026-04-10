@@ -33,7 +33,8 @@
     "forgotPassword": "Passwort vergessen?",
     "loginFailed": "Anmeldung fehlgeschlagen",
     "noAppProfile": "Sie sind angemeldet, aber Ihr Konto ist in Surface noch nicht eingerichtet. Bitte wenden Sie sich an eine Administratorin oder einen Administrator.",
-    "profileFetchFailed": "Anmeldung erfolgreich, aber Ihr Profil konnte nicht geladen werden. Prüfen Sie VITE_API_URL und CORS_ORIGINS, stellen Sie anschließend neu bereit."
+    "profileFetchFailed": "Anmeldung erfolgreich, aber Ihr Profil konnte nicht geladen werden. Prüfen Sie VITE_API_URL und CORS_ORIGINS, stellen Sie anschließend neu bereit.",
+    "redirecting": "Weiterleitung…"
   },
   "forgotPassword": {
     "title": "Passwort vergessen",
