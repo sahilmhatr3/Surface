@@ -286,6 +286,88 @@ def generate_cycle_actions(
         return []
 
 
+def synthesize_structured_receiver_comments(
+    helpful_comments: list[str],
+    improvement_comments: list[str],
+    average_scores: dict[str, float],
+    max_points: int = 10,
+) -> tuple[list[str], list[str]]:
+    """
+    For one receiver: read all structured peer comments (helpful + improvement), merge themes,
+    extract signal, and return two lists of reworded key points. Same intent as rant-side
+    processing: no verbatim quotes, no attribution, professional tone.
+    """
+    h = [c.strip() for c in helpful_comments if c and str(c).strip()]
+    i = [c.strip() for c in improvement_comments if c and str(c).strip()]
+    if not h and not i:
+        return [], []
+    if not settings.OPENAI_API_KEY:
+        return [], []
+
+    score_lines = ", ".join(f"{k}={v:.1f}" for k, v in sorted(average_scores.items())) or "not provided"
+    h_block = "\n".join(f"- {c[:2000]}" for c in h[:40]) or "(none)"
+    imp_block = "\n".join(f"- {c[:2000]}" for c in i[:40]) or "(none)"
+    combined_len = len(h_block) + len(imp_block)
+    if combined_len > 10000:
+        h_block = h_block[:5000] + "\n[...]"
+        imp_block = imp_block[:5000] + "\n[...]"
+
+    client = _client()
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You compile anonymous peer feedback about a single employee. Multiple teammates wrote the comments below; "
+                    "the employee must never be able to infer who wrote what.\n\n"
+                    "Your task:\n"
+                    "1) helpful_key_points: synthesize ONLY from the 'does well' section. Merge overlapping ideas. "
+                    "Each point must be entirely in your own words; do NOT quote, copy, or closely paraphrase the originals.\n"
+                    "2) improvement_key_points: same rules for the 'could improve' section: constructive, specific, professional.\n"
+                    "3) Use neutral framing only (e.g. 'Feedback suggests...', 'There is consistent signal that...'). "
+                    "Never use 'I', 'we' as the writer, or imply a single colleague.\n"
+                    "4) Reply with ONLY a JSON object: "
+                    '{"helpful_key_points": ["..."], "improvement_key_points": ["..."]}.\n'
+                    f"5) At most {max_points} strings per array; each string is one short bullet-level sentence.\n"
+                    "6) If a section was (none) or has no usable content, use an empty array for that key."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Context: average numeric ratings (1–5 scale) across peers: {score_lines}\n\n"
+                    f"## What colleagues said is working well\n{h_block}\n\n"
+                    f"## What colleagues said could improve\n{imp_block}"
+                ),
+            },
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=1200,
+        temperature=0.35,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return [], []
+        hp = data.get("helpful_key_points") or []
+        ip = data.get("improvement_key_points") or []
+        out_h: list[str] = []
+        out_i: list[str] = []
+        if isinstance(hp, list):
+            for x in hp:
+                if isinstance(x, str) and x.strip():
+                    out_h.append(x.strip()[:500])
+        if isinstance(ip, list):
+            for x in ip:
+                if isinstance(x, str) and x.strip():
+                    out_i.append(x.strip()[:500])
+        return out_h[:max_points], out_i[:max_points]
+    except (json.JSONDecodeError, TypeError):
+        return [], []
+
+
 def reword_theme_feedback_to_key_points(
     anonymized_texts: list[str],
     sentiments: list[str],

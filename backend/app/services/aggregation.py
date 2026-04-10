@@ -18,7 +18,12 @@ from app.models import (
     StructuredFeedback,
     User,
 )
-from app.services.ai import generate_cycle_actions, reword_theme_feedback_to_key_points, summarize_feedback_cycle
+from app.services.ai import (
+    generate_cycle_actions,
+    reword_theme_feedback_to_key_points,
+    summarize_feedback_cycle,
+    synthesize_structured_receiver_comments,
+)
 
 RAW_DATA_RETENTION_DAYS = 7
 
@@ -163,8 +168,48 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
             vals = [r.scores.get(key) for r in rows if r.scores and isinstance(r.scores.get(key), (int, float))]
             if vals:
                 average_scores[key] = round(sum(vals) / len(vals), 2)
-        snippets_helpful = [r.comments_helpful for r in rows if r.comments_helpful]
-        snippets_improvement = [r.comments_improvement for r in rows if r.comments_improvement]
+
+        raw_helpful = [r.comments_helpful.strip() for r in rows if r.comments_helpful and str(r.comments_helpful).strip()]
+        raw_improvement = [
+            r.comments_improvement.strip()
+            for r in rows
+            if r.comments_improvement and str(r.comments_improvement).strip()
+        ]
+
+        snippets_helpful: list[str] = []
+        snippets_improvement: list[str] = []
+        if raw_helpful or raw_improvement:
+            try:
+                snippets_helpful, snippets_improvement = synthesize_structured_receiver_comments(
+                    raw_helpful,
+                    raw_improvement,
+                    average_scores,
+                    max_points=10,
+                )
+            except Exception:
+                snippets_helpful, snippets_improvement = [], []
+
+            # Fallback: same non-verbatim key-point pass as team themes (per column).
+            if not snippets_helpful and raw_helpful:
+                try:
+                    snippets_helpful = reword_theme_feedback_to_key_points(
+                        raw_helpful,
+                        ["neutral"] * len(raw_helpful),
+                        "peer feedback on strengths",
+                        max_points=10,
+                    )
+                except Exception:
+                    snippets_helpful = []
+            if not snippets_improvement and raw_improvement:
+                try:
+                    snippets_improvement = reword_theme_feedback_to_key_points(
+                        raw_improvement,
+                        ["neutral"] * len(raw_improvement),
+                        "peer feedback on areas to develop",
+                        max_points=10,
+                    )
+                except Exception:
+                    snippets_improvement = []
         neg = sum(1 for row in rows if ((row.scores or {}).get("support", 3) + (row.scores or {}).get("communication", 3)) / 2 < 2.5)
         pos = sum(1 for row in rows if ((row.scores or {}).get("support", 3) + (row.scores or {}).get("communication", 3)) / 2 >= 4)
         sentiment = "neutral"

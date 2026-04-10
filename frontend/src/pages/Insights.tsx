@@ -739,8 +739,8 @@ export default function Insights() {
                                   <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
                                   {b}
                           </li>
-                              ))}
-                            </ul>
+                        ))}
+                      </ul>
                           </div>
                         ))}
                       </div>
