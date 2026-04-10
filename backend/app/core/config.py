@@ -2,16 +2,21 @@
 Application settings from environment variables. No secrets in code.
 """
 import json
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load backend/.env regardless of cwd (uvicorn often started from repo root).
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_ENV_FILE = _BACKEND_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Load from environment; use .env for local development."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE) if _ENV_FILE.is_file() else ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -69,6 +74,20 @@ class Settings(BaseSettings):
         default=None,
         description="Public SPA origin for Supabase invite/recovery links, e.g. https://app.example.com or http://localhost:5173",
     )
+
+    # Resend — pilot / contact form (POST /contact)
+    RESEND_API_KEY: str | None = Field(
+        default=None,
+        description="Resend API key for sending contact form emails",
+    )
+
+    @field_validator("RESEND_API_KEY", mode="before")
+    @classmethod
+    def strip_resend_key(cls, v: object) -> object:
+        if v is None or not isinstance(v, str):
+            return v
+        s = v.strip()
+        return s if s else None
 
 
 settings = Settings()

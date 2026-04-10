@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../lib/supabase";
 import { isPasswordRecoverySession } from "../lib/supabaseSession";
+import { clearRecoveryMode } from "../hooks/useAuth";
 
 const pillInput =
   "w-full px-4 py-3 rounded-full bg-white/5 border border-surface-pill-border text-surface-text placeholder-surface-text-muted focus:outline-none focus:border-surface-accent-cyan/50 focus:ring-1 focus:ring-surface-accent-cyan/30 transition-all";
@@ -132,6 +133,8 @@ export default function ResetPassword() {
         setError(upError.message);
         return;
       }
+      // Password saved — allow normal auth to resume.
+      clearRecoveryMode();
       navigate("/dashboard", { replace: true });
     } finally {
       setSubmitting(false);

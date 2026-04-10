@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./hooks/useAuth";
 import Layout from "./components/Layout";
 import Landing from "./pages/Landing";
+import PilotRequest from "./pages/PilotRequest";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import AuthCallback from "./pages/AuthCallback";
@@ -19,8 +20,12 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Landing />} />
+        {/* Landing page — self-contained marketing layout, no app navbar */}
+        <Route path="/" element={<Landing />} />
+        <Route path="/pilot" element={<PilotRequest />} />
+
+        {/* App routes — shared layout with app navbar */}
+        <Route element={<Layout />}>
           <Route path="login" element={<Login />} />
           <Route path="forgot-password" element={<ForgotPassword />} />
           <Route path="auth/callback" element={<AuthCallback />} />

@@ -32,15 +32,28 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Module-level flag set the moment PASSWORD_RECOVERY fires.
+ * Lives outside React so it survives re-renders, strict-mode double-invocations,
+ * and the race where the event fires before onAuthStateChange is registered.
+ * Cleared only when the user completes the reset (USER_UPDATED) or signs out.
+ */
+let _recoveryActive = false;
+
+/** Called by ResetPassword after a successful updateUser to re-enable normal auth. */
+export function clearRecoveryMode() {
+  _recoveryActive = false;
+}
+
+function isRecoveryContext(session: Parameters<typeof isPasswordRecoverySession>[0]) {
+  return _recoveryActive || isPasswordRecoverySession(session);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * Fetch the app-level user profile from our backend using the current
-   * Supabase session token. Clears the user if no session exists.
-   */
   const refreshUser = useCallback(async (): Promise<RefreshUserResult> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -48,9 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return { profile: null };
     }
-    // Password recovery sessions must not be treated as a normal login —
-    // the user is mid-reset and should not see the app as authenticated.
-    if (isPasswordRecoverySession(session)) {
+    // Block profile fetch while a password-reset is in progress.
+    if (isRecoveryContext(session)) {
       setUser(null);
       setLoading(false);
       return { profile: null };
@@ -75,16 +87,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refreshUser();
-
+    // Eagerly subscribe BEFORE the initial refreshUser so we never miss events.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // PASSWORD_RECOVERY is a scoped session just for resetting a password.
-      // Treat it the same as no session so the navbar/app stays in logged-out state.
-      if (event === "PASSWORD_RECOVERY" || isPasswordRecoverySession(session)) {
+      if (event === "PASSWORD_RECOVERY") {
+        // Set the module-level flag immediately — synchronously, before any async work.
+        _recoveryActive = true;
         setUser(null);
         setLoading(false);
         return;
       }
+
+      if (event === "SIGNED_OUT") {
+        _recoveryActive = false;
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // Guard: if recovery is active (flag or JWT amr claim), never authenticate.
+      if (isRecoveryContext(session)) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       if (!session) {
         setUser(null);
         setLoading(false);
@@ -92,6 +118,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void refreshUser();
       }
     });
+
+    // Run initial profile fetch after the listener is in place.
+    void refreshUser();
 
     return () => subscription.unsubscribe();
   }, [refreshUser]);
@@ -109,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    _recoveryActive = false;
     await supabase.auth.signOut();
     setUser(null);
     setError(null);

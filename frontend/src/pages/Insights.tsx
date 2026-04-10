@@ -650,7 +650,7 @@ export default function Insights() {
                 <div>
                   <h2 className="text-lg font-semibold text-surface-text-strong">
                     {previewMode ? t("insights.teamViewPreview") : t("insights.managerReview")}
-                  </h2>
+              </h2>
                   <p className="text-surface-text-muted text-xs mt-0.5">
                     {previewMode ? t("insights.previewSubtitle") : t("insights.reviewSubtitle")}
                   </p>
@@ -665,12 +665,12 @@ export default function Insights() {
                     {review.individuals_published && (
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-violet-500/10 text-violet-400/80 border border-violet-500/20">
                         {t("insights.individualLiveBadge")}
-                      </span>
+                    </span>
                     )}
                     {!review.team_published && !review.individuals_published && (
                       <span className="text-xs px-2.5 py-1 rounded-full font-medium border bg-white/5 text-surface-text-muted border-white/10">
                         {t("insights.compiledUnpublished")}
-                      </span>
+                    </span>
                     )}
                   </div>
                   <div className="flex rounded-lg border border-surface-pill-border overflow-hidden text-xs font-medium">
@@ -738,7 +738,7 @@ export default function Insights() {
                                 <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
                                   <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
                                   {b}
-                                </li>
+                          </li>
                               ))}
                             </ul>
                           </div>
@@ -822,9 +822,9 @@ export default function Insights() {
                                       <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
                                         <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
                                         {b}
-                                      </li>
-                                    ))}
-                                  </ul>
+                  </li>
+                ))}
+              </ul>
                                 </div>
                               ))}
                             </div>
@@ -971,8 +971,8 @@ export default function Insights() {
                                 );
                               })}
                             </div>
-                          </div>
-                        )}
+            </div>
+          )}
 
                         {/* Directed open feedback (from rants) */}
                         {review.directed_segments.length > 0 && (
@@ -1234,14 +1234,14 @@ export default function Insights() {
                             <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
                               <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
                               {b}
-                            </li>
-                          ))}
-                        </ul>
+                  </li>
+                ))}
+              </ul>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+            </div>
+          )}
 
               {summary && summary.actions.length > 0 && (
                 <div>

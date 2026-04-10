@@ -1,0 +1,195 @@
+Project overview
+
+Build a single-page marketing landing page for Surface, a B2B SaaS product that gives managers honest, anonymized 360-degree team feedback and turns it into actionable insights and development plans. The target audience is team leads and managers at mid-size companies. The tone is professional, direct, and modern — think Linear, Vercel, or Stripe in restraint and quality. No AI-generated imagery, no glowing blobs, no gradient buttons, no purple neon effects.
+
+Design direction
+
+Color palette: The same as current.
+
+Typography: use a clean, modern sans-serif. Suggested pairing — General Sans or Satoshi (via Fontshare) for body and subheadings, and a slightly heavier weight of the same font for headings. Do not use display-only fonts or anything decorative.
+
+Surfaces: cards should use subtle dark surface elevation (slight background shift, no colored borders). No thick colored side borders on any card.
+
+Borders: alpha-blended, not solid gray — oklch(... / 0.10) style.
+
+Shadows: dark-mode-appropriate, low-opacity, warm-toned.
+
+Radius: consistent throughout. Cards use --radius-lg, inputs and buttons use --radius-full for pill shape, matching the existing mockup style.
+
+No AI stock photography anywhere. Where image assets are needed, leave clearly labeled placeholder containers with a comment like <!-- REPLACE: upload /assets/moreno.jpg here --> so the developer can drop in real photos later.
+
+No decorative background shapes, floating blobs, circuit board patterns, or geometric network lines.
+
+Navbar
+
+Fixed at top, transparent background that darkens slightly on scroll.
+
+Left: Surface logo mark (a clean geometric stacked-layers SVG mark, no 3D iridescent object) followed by the wordmark "Surface" in the body font, medium weight.
+
+Right: single CTA button "Start a Pilot" — pill-shaped, white background with dark text, no gradient fill.
+
+No other nav links needed for MVP.
+
+Section 1 — Hero
+
+Full viewport height.
+
+Large background wordmark "Surface" in very dark navy, barely visible, centered behind the content (opacity ~0.06), using a heavy font weight. This gives depth without decoration.
+
+Centered content stack:
+
+Small overline label: "AI Leadership Assistant" in small caps or tracked uppercase, muted color.
+
+Main headline: "We help leaders develop high-performing teams." — regular weight for "We help leaders", bold for "develop high-performing teams." Keep the two-weight contrast from the original mockup.
+
+Subheadline (one line, muted): "For the first time, the insight you've always needed — surfaced automatically."
+
+Two pill buttons side by side: "Start a Pilot" (filled, white) and "Download PDF" (outlined, white border).
+
+No 3D objects, no holographic crystal imagery. The visual anchor is the large background wordmark alone.
+
+Below the buttons, show a faint preview of the dashboard UI peeking up from the bottom of the viewport — a subtle 3-panel card strip partially visible, slightly blurred at the bottom edge, giving the impression of real product below the fold. These are placeholder containers labeled <!-- REPLACE: dashboard preview screenshot -->.
+
+Section 2 — The problem
+
+Left-aligned layout. Section does NOT use centered text.
+
+Bold headline: "People leadership shouldn't stand in the way of profits and growth."
+
+Two supporting sentences below: "Teams become quietly disengaged as team chemistry deteriorates." and "Buried in workload, leaders' efforts never translate into real performance."
+
+Single "Start a Pilot" CTA below.
+
+Instead of AI-generated images: replace the three image panels with three dark-surfaced stat/insight cards. Each card has:
+
+A clean Lucide icon (no circles around them, just the icon itself).
+
+A short label: "Team disengagement goes undetected", "Performance reviews happen too late", "Leaders lack the visibility to act."
+
+No images. The cards themselves are the visual weight.
+
+Section 3 — Why this is new (the standard shift)
+
+This section should make the case that this kind of feedback quality was not achievable before, not because of effort, but because the technology to collect, anonymize, and synthesize it at scale simply did not exist.
+
+Dark background section, full bleed.
+
+Centered headline: "The standard has changed."
+
+Two-column layout below:
+
+Left column — "Before Surface": bulleted list in muted text. Examples: "Feedback filtered through hierarchy", "Managers guessing what's really happening", "Annual reviews capturing yesterday's problems", "People development relying on individual manager capacity."
+
+Right column — "With Surface": same structure, accent color for bullet markers. Examples: "Honest input from every voice on the team", "Aggregated themes surfaced automatically after every cycle", "Continuous insight that reflects how the team actually feels today", "AI turns input into individual and team development plans at scale."
+
+Small text below: "This level of insight was previously inaccessible — not for lack of intention, but for lack of the right infrastructure."
+
+Section 4 — How it works
+
+Centered headline: "How it works" — no logo marks flanking it, just clean text.
+
+Subheadline: "Three steps to a high-performing team."
+
+Three step cards in a row. Each card:
+
+Dark surface background, no gradient fill.
+
+Step number in large, very faint typography behind the card content (like a watermark digit).
+
+Lucide icon at top, natural size, no background circle.
+
+Bold step title below.
+
+One-sentence description.
+
+Step 1: "Set up your team" / "Invite your team in minutes. Surface handles the structure."
+
+Step 2: "Collect honest input" / "Everyone shares structured, anonymous feedback each cycle."
+
+Step 3: "Lead with clarity" / "Surface translates input into insights and clear development guidance."
+
+Section 5 — What it looks like (outcomes)
+
+Centered headline: "What leading a high-performing team looks like."
+
+Replace the circuit-line diagram with a clean asymmetric bento grid: three cards of varying sizes arranged in a 2+1 layout.
+
+Card 1 (wide): "Clear insight into individual and team dynamics" — contains a placeholder for a real product screenshot (<!-- REPLACE: /assets/dashboard-screenshot.png -->), framed inside a dark rounded device mockup container.
+
+Card 2 (narrow): "People development scales beyond one leader's capacity" — text and a small icon.
+
+Card 3 (narrow): "Teams grow into high performers driving real results" — text and a small icon.
+
+No stock photography of people. No circuit lines.
+
+Section 6 — Product features
+
+Light background section (slightly off-white or very light gray, to create contrast with the surrounding dark sections).
+
+Centered headline: "Introducing Surface."
+
+One-paragraph subheading: "Surface is a leadership and team development system that turns honest team input into actionable insight and clear guidance — enabling leaders to develop people effectively at scale."
+
+Four feature cards in a 2x2 grid:
+
+01 Honest, Confidential Input
+
+02 Intelligent AI Analysis
+
+03 Actionable Development Plans
+
+04 Dashboard Visibility
+
+Each card: clean border, no colored outlines except a single subtle accent on the active/hover state, Lucide icon top-right, short paragraph.
+
+No puzzle piece illustration. No icons in colored circles.
+
+Section 7 — Meet the team
+
+Split layout: text on left, founder cards on right.
+
+Left: "We know how difficult it is to develop people without the insight, time, or guidance needed. With backgrounds in computer science and business, we bring a fresh, unbiased perspective that makes high performance happen by default."
+
+Right: Two overlapping portrait cards staggered vertically.
+
+Each card: clean white card (or very light surface), rounded corners, name, title.
+
+Photo placeholder: <!-- REPLACE: /assets/moreno.jpg --> and <!-- REPLACE: /assets/sahil.jpg -->.
+
+A small "View Website" pill link below each.
+
+Background of this section: pure dark navy, no network graph, no particle texture.
+
+Section 8 — Final CTA
+
+Full bleed, dark background.
+
+Centered large headline: "Your team's next level starts here."
+
+Single subline: "Run a free pilot. See what your team has been waiting to say."
+
+One CTA button: "Start a Pilot."
+
+Footer
+
+Minimal. Logo left. Copyright right. No nav columns needed at this stage.
+
+Technical notes
+
+Single HTML file with embedded CSS and JS, no build tools required.
+
+All image assets referenced as relative paths from an /assets/ folder. Every image tag should have a descriptive alt, width, height, and loading="lazy".
+
+Where images are not yet available, use a <div class="img-placeholder"> with the asset path as a data-src attribute and a visible label so the developer knows exactly what to drop in.
+
+Light and dark mode toggle in the navbar (sun/moon icon). Default to dark.
+
+Smooth scroll behavior. Navbar shrinks slightly on scroll.
+
+All interactive elements must have visible focus states and meet WCAG AA contrast.
+
+No localStorage or sessionStorage.
+
+JS should be minimal — only used for the scroll navbar effect, theme toggle, and any subtle entrance animations.
+
+Entrance animations: elements fade in and translate up slightly on scroll into view. Keep it subtle — 300ms, opacity and translateY only. Respect prefers-reduced-motion.

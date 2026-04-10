@@ -58,6 +58,46 @@ export class ApiError extends Error {
   }
 }
 
+export type ContactPilotPayload = {
+  full_name: string;
+  email: string;
+  subject?: string;
+  message: string;
+};
+
+/** Public pilot request form — POST /contact, no auth. */
+export async function submitContactPilot(body: ContactPilotPayload): Promise<void> {
+  const url = `${BASE_URL}/contact`;
+  const payload: Record<string, string> = {
+    full_name: body.full_name.trim(),
+    email: body.email.trim(),
+    message: body.message.trim(),
+  };
+  const sub = body.subject?.trim();
+  if (sub) payload.subject = sub;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let detail = text;
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (j.detail !== undefined) {
+        detail =
+          typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      }
+    } catch {
+      // use text as-is
+    }
+    throw new ApiError(res.status, detail);
+  }
+}
+
 // ---- Auth ----
 export const authApi = {
   /** Fetch the app-level profile for the current Supabase session. */
