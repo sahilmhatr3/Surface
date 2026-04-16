@@ -753,6 +753,7 @@ const FOUNDERS = [
     title: "Business Administration, University of Zurich",
     sub: "Retail Strategy, Mercedes-Benz",
     asset: "/assets/moreno.jpg",
+    website: "https://morenonigro.com",
     key: "moreno",
   },
   {
@@ -760,6 +761,7 @@ const FOUNDERS = [
     title: "Forward Deployed Engineer, Palantir",
     sub: "MS Computer Science, Cornell University",
     asset: "/assets/sahil.jpg",
+    website: "https://sahilmhatre.com",
     key: "sahil",
   },
 ];
@@ -780,7 +782,7 @@ function TeamSection() {
 
         {/* Inline founder cards at the same level */}
         <div className="flex gap-5 items-start">
-          {FOUNDERS.map(({ name, title, sub, asset, key }, i) => (
+          {FOUNDERS.map(({ name, title, sub, asset, website, key }, i) => (
             <AnimateIn key={key} delay={i * 100}>
               <div
                 className="w-52 rounded-2xl overflow-hidden"
@@ -789,24 +791,25 @@ function TeamSection() {
                 <div
                   className="w-full h-52 flex items-center justify-center"
                   style={{ background: "#e4dfef" }}
-                  data-src={asset}
                 >
-                  {/* REPLACE: {asset} */}
-                  <span
-                    className="text-[10px] font-mono text-center px-2 leading-relaxed"
-                    style={{ color: "#6b5faa" }}
-                  >
-                    REPLACE:{"\n"}{asset}
-                  </span>
+                  <img
+                    src={asset}
+                    alt={`${name} profile`}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 </div>
                 <div className="p-5">
                   <p className="font-bold text-sm leading-snug mb-1" style={{ color: "#1a1225" }}>{name}</p>
                   <p className="text-[11px] leading-snug mb-0.5" style={{ color: "#4a3f70" }}>{title}</p>
                   <p className="text-[11px] leading-snug mb-4" style={{ color: "#7a6fa0" }}>{sub}</p>
                   <a
-                    href="#"
+                    href={website}
                     className="inline-flex items-center justify-center w-full py-1.5 rounded-full text-[11px] font-semibold transition-colors"
                     style={{ border: "1px solid #d4cee8", color: "#4a3f70" }}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Visit ${name} website`}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#e4dfef")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
