@@ -231,6 +231,11 @@ export const feedbackApi = {
   getTeammates: () =>
     request<import("./types").TeammateResponse[]>("/feedback/teammates"),
 
+  getMyRantStatus: (cycleId: number) =>
+    request<import("./types").MyRantStatusResponse>(
+      `/feedback/rant?cycle_id=${encodeURIComponent(cycleId)}`
+    ),
+
   getMyStructuredFeedback: (cycleId: number) =>
     request<import("./types").MyStructuredFeedbackItem[]>(
       `/feedback/structured?cycle_id=${encodeURIComponent(cycleId)}`

@@ -217,6 +217,11 @@ export interface TeammateResponse {
   name: string;
 }
 
+/** GET /feedback/rant?cycle_id= */
+export interface MyRantStatusResponse {
+  has_submitted: boolean;
+}
+
 export interface RantCreate {
   cycle_id: number;
   text: string;

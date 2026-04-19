@@ -157,10 +157,30 @@
     "removeTagAria": "Tag {{tag}} entfernen",
     "submitting": "Wird gesendet…",
     "submitRant": "Rant absenden",
+    "submitRantCta": "Rant für diesen Zyklus absenden",
+    "overallProgressLabel": "Dieser Zyklus",
+    "overallProgressFraction": "{{done}} / {{total}} erledigt",
+    "overallProgressAria": "Feedback-Fortschritt: {{done}} von {{total}} Schritten",
+    "progressRantItem": "Anonymer Rant",
+    "progressStructuredItem": "Strukturiertes Feedback für Teamkolleg:innen",
+    "cycleCompleteTitle": "Für diesen Zyklus sind Sie fertig",
+    "cycleCompleteBody": "Ihr Rant (falls gesendet) und das strukturierte Feedback für alle sind erfasst. Bis zum Zyklusende können Sie Karten öffnen und Einreichungen anpassen.",
+    "rantStatusPending": "Offen",
+    "rantStatusDone": "Abgesendet",
     "structuredTitle": "Strukturiertes Feedback",
     "structuredAllDone": "Alles erledigt",
     "structuredNoTeammates": "Noch keine Teamkolleg:innen",
     "structuredProgress": "Bewerten Sie jede Person (1–5) und speichern Sie pro Person. {{saved}}/{{total}} gespeichert.",
+    "structuredStatusDone": "Alles abgesendet",
+    "structuredStatusPending": "{{saved}}/{{total}}",
+    "structuredTeaserDone": "Für alle liegt eine Einreichung vor. Zum Prüfen oder Aktualisieren aufklappen.",
+    "structuredTeaserProgress": "Pro Teamkolleg:in einmal absenden — mit der Schaltfläche auf jeder Karte wird an den Server gesendet.",
+    "submitStructuredForTeammate": "Feedback absenden",
+    "updateStructuredForTeammate": "Einreichung aktualisieren",
+    "structuredSubmitting": "Wird gesendet…",
+    "structuredSubmittedFlash": "Abgesendet ✓",
+    "structuredSubmittedState": "Abgesendet",
+    "hintStructuredDoneRantPending": "Strukturiertes Feedback ist vollständig. Senden Sie noch den anonymen Rant (oben), um den Zyklus abzuschließen.",
     "noOtherMembers": "Noch keine weiteren Teammitglieder.",
     "progressAria": "Fortschritt {{saved}} von {{total}}",
     "savedNamed": "Gespeichert: {{name}}",
@@ -334,5 +354,145 @@
     "actionRowTeam": "Team",
     "hideFromTeam": "Für Team ausblenden",
     "showToTeam": "Für Team einblenden"
+  },
+  "landing": {
+    "aria": {
+      "home": "Surface Startseite",
+      "pageSections": "Seitenabschnitte",
+      "navigateTo": "Zu {{section}} navigieren"
+    },
+    "sections": {
+      "hero": "Überblick",
+      "problem": "Das Problem",
+      "standardShift": "Neuer Standard",
+      "howItWorks": "So funktioniert's",
+      "outcomes": "Ergebnisse",
+      "features": "Produkt",
+      "team": "Team",
+      "cta": "Loslegen"
+    },
+    "hero": {
+      "label": "KI-Führungsassistent",
+      "titleLead": "Wir helfen Führungskräften, ",
+      "titleStrong": "hochleistungsfähige Teams aufzubauen.",
+      "subtitle": "Zum ersten Mal erhalten Sie die Erkenntnisse, die Sie schon immer gebraucht haben — automatisch aufbereitet.",
+      "startPilot": "Pilot starten",
+      "downloadPdf": "PDF herunterladen",
+      "mockHealth": "Teamgesundheit",
+      "mockActive": "Aktiv",
+      "mockCycle": "Aktueller Zyklus",
+      "mockTheme1": "Kommunikation",
+      "mockTheme2": "Zusammenarbeit",
+      "mockTheme3": "Lieferleistung",
+      "mockCycleCloses": "Zyklus endet in 4 Tagen",
+      "mockActionTitle": "Neueste Maßnahme",
+      "mockActionBody": "Planen Sie zweiwöchentliche 1:1s, um Kommunikationslücken aus dem letzten Zyklus zu adressieren.",
+      "mockTeamWide": "Teamweit"
+    },
+    "problem": {
+      "label": "Das Problem",
+      "title": "People Leadership sollte Wachstum und Profitabilität nicht bremsen.",
+      "p1": "Teams entkoppeln sich leise, wenn die Teamchemie leidet.",
+      "p2": "Unter Arbeitslast bleiben Führungsanstrengungen oft ohne messbare Wirkung.",
+      "startPilot": "Pilot starten",
+      "stat1": {
+        "label": "Team-Desengagement bleibt unbemerkt",
+        "sub": "Wenn es sichtbar wird, ist der Schaden oft schon entstanden."
+      },
+      "stat2": {
+        "label": "Leistungsgespräche kommen zu spät",
+        "sub": "Jährliche Zyklen spiegeln gestern — nicht die Realität von heute."
+      },
+      "stat3": {
+        "label": "Führungskräfte handeln ohne klare Sicht",
+        "sub": "Ohne ehrlichen Input werden Entscheidungen auf unvollständiger Grundlage getroffen."
+      }
+    },
+    "standard": {
+      "label": "Ein neuer Standard",
+      "title": "Der Standard hat sich geändert.",
+      "beforeTitle": "Vor Surface",
+      "afterTitle": "Mit Surface",
+      "footer": "Dieses Maß an Einsicht war früher kaum erreichbar — nicht aus fehlender Absicht, sondern aus fehlender Infrastruktur.",
+      "before": [
+        "Feedback wird durch Hierarchien gefiltert",
+        "Führungskräfte raten, was wirklich los ist",
+        "Jahresgespräche spiegeln gestern, nicht heute",
+        "Personalentwicklung hängt von Einzelkapazitäten ab"
+      ],
+      "after": [
+        "Ehrlicher Input aus jeder Stimme im Team",
+        "Themen werden nach jedem Zyklus automatisch verdichtet",
+        "Kontinuierliche Einsicht in das, was das Team heute wirklich fühlt",
+        "KI macht aus Input skalierbare Entwicklungspläne für Menschen und Team"
+      ]
+    },
+    "howItWorks": {
+      "label": "Ablauf",
+      "title": "So funktioniert's",
+      "subtitle": "Drei Schritte zu einem Hochleistungsteam.",
+      "step1Title": "Team einrichten",
+      "step1Body": "Laden Sie Ihr Team in Minuten ein. Surface liefert die Struktur.",
+      "step2Title": "Ehrlichen Input sammeln",
+      "step2Body": "Alle geben strukturiertes, anonymes Feedback pro Zyklus.",
+      "step3Title": "Mit Klarheit führen",
+      "step3Body": "Surface übersetzt Input in Erkenntnisse und klare Entwicklungsimpulse."
+    },
+    "outcomes": {
+      "label": "Ergebnisse",
+      "titleLine1": "So sieht Führung eines Hochleistungsteams",
+      "titleLine2": " in der Praxis aus.",
+      "card1Title": "Klare Einsicht in Dynamik von Menschen und Team",
+      "card1Body": "Verstehen Sie genau, wo Ihr Team steht — aktualisiert nach jedem Feedback-Zyklus.",
+      "mockChromeTitle": "Surface — Dashboard",
+      "mockOpenBadge": "Offen",
+      "mockTrendCaption": "Durchschnittswerte (Beispiel)",
+      "mockLegendPerf": "Leistung",
+      "mockLegendImpact": "Wirkung im Team",
+      "mockThemesHeader": "Dieser Zyklus",
+      "mockPillRants": "Rants",
+      "mockPillStructured": "Strukturiert",
+      "mockPillThemes": "Themen",
+      "card2Title": "Entwicklung skaliert über die Kapazität einzelner Führungskräfte hinaus",
+      "card3Title": "Teams werden zu Hochleistern mit echtem Impact"
+    },
+    "features": {
+      "label": "Produkt",
+      "title": "Surface im Überblick.",
+      "intro": "Surface ist ein Leadership- und Teamentwicklungssystem, das ehrlichen Team-Input in umsetzbare Erkenntnisse und klare Orientierung verwandelt — damit Führungskräfte Menschen skalierbar entwickeln können.",
+      "f1Title": "Ehrlicher, vertraulicher Input",
+      "f1Body": "Strukturiertes und unstrukturiertes Feedback fließt von allen Teammitgliedern — anonymisiert, bevor es Führungskräfte erreicht. So sagen Menschen, was sie wirklich meinen.",
+      "f2Title": "Intelligente KI-Analyse",
+      "f2Body": "Surface bündelt Themen, gewichtet Stimmung und trennt Signal von Rauschen — aus vielen Antworten wird ein klares Bild der Teamgesundheit.",
+      "f3Title": "Umsetzbare Entwicklungspläne",
+      "f3Body": "KI-generierte Maßnahmen — jeweils editierbar durch die Führungskraft — übersetzen Erkenntnis in konkrete nächste Schritte auf individueller und Team-Ebene.",
+      "f4Title": "Dashboard-Sichtbarkeit",
+      "f4Body": "Ein Ort für Trends, Score-Verläufe, offene Zyklen, veröffentlichte Maßnahmen und kommende Feedback-Fenster — damit nichts verloren geht."
+    },
+    "team": {
+      "label": "Das Team",
+      "body": "Wir wissen, wie schwer es ist, Menschen zu entwickeln — ohne die nötige Einsicht, Zeit oder Orientierung. Mit Hintergründen in Informatik und Betriebswirtschaft bringen wir eine frische, unvoreingenommene Perspektive, die Hochleistung zur Normalität macht.",
+      "founders": {
+        "moreno": {
+          "title": "Betriebswirtschaft, Universität Zürich",
+          "sub": "Retail-Strategie, Mercedes-Benz"
+        },
+        "sahil": {
+          "title": "Forward Deployed Engineer, Palantir",
+          "sub": "M.Sc. Informatik, Cornell University"
+        }
+      },
+      "viewWebsite": "Website besuchen",
+      "visitWebsiteAria": "Website von {{name}} besuchen"
+    },
+    "cta": {
+      "titleLine1": "Das nächste Level Ihres Teams",
+      "titleLine2": "beginnt hier.",
+      "subtitle": "Starten Sie einen kostenlosen Piloten. Erfahren Sie, was Ihr Team schon lange sagen wollte.",
+      "startPilot": "Pilot starten"
+    },
+    "footer": {
+      "rights": "© {{year}} Surface. Alle Rechte vorbehalten."
+    }
   }
 }

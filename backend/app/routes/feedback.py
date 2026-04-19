@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import FeedbackCycle, Rant, RantDirectedSegment, StructuredFeedback, User
 from app.schemas.feedback import (
+    MyRantStatusResponse,
     MyStructuredFeedbackItem,
     RantCreate,
     RantResponse,
@@ -110,6 +111,27 @@ def get_my_structured_feedback(
         )
         for r in rows
     ]
+
+
+@router.get("/rant", response_model=MyRantStatusResponse)
+def get_my_rant_status(
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return whether the current user has a rant row for this cycle (submitted at least once).
+    Used to restore the feedback UI after reload. Cycle must belong to the user's team.
+    """
+    cycle = _get_cycle_for_team(db, cycle_id, current_user)
+    if not cycle:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cycle not found")
+    exists = (
+        db.query(Rant)
+        .filter(Rant.cycle_id == cycle_id, Rant.user_id == current_user.id)
+        .first()
+    )
+    return MyRantStatusResponse(has_submitted=exists is not None)
 
 
 def _process_rant_async(

@@ -175,6 +175,8 @@ export default function Feedback() {
   const [savedStructuredReceivers, setSavedStructuredReceivers] = useState<Set<number>>(new Set());
   const [lastSavedStructured, setLastSavedStructured] = useState<Record<number, StructuredEntry>>({});
   const [structuredCollapsedIds, setStructuredCollapsedIds] = useState<Set<number>>(new Set());
+  /** Brief “submitted” highlight on the per-person button after a successful POST */
+  const [structuredJustSavedId, setStructuredJustSavedId] = useState<number | null>(null);
 
   // custom tag state
   const [customTagInput, setCustomTagInput] = useState("");
@@ -192,6 +194,12 @@ export default function Feedback() {
     : null;
   const cycleOpen = selectedCycle?.status === "open";
 
+  useEffect(() => {
+    if (structuredJustSavedId == null) return;
+    const tmr = window.setTimeout(() => setStructuredJustSavedId(null), 2600);
+    return () => window.clearTimeout(tmr);
+  }, [structuredJustSavedId]);
+
   // ─── load data ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -203,33 +211,45 @@ export default function Feedback() {
 
     setError(null);
     setLoading(true);
+    setStructuredJustSavedId(null);
 
     Promise.all([cyclesApi.listCycles(), feedbackApi.getTeammates()])
       .then(async ([c, teammateList]) => {
         setCycles(c);
         setTeammates(teammateList);
-        setStructured((prev) => {
-          const next = { ...prev };
+
+        setStructured(() => {
+          const next: Record<number, StructuredEntry> = {};
           teammateList.forEach((teammate) => {
-            if (!(teammate.id in next))
-              next[teammate.id] = {
-                support: 3,
-                communication: 3,
-                comments_helpful: "",
-                comments_improvement: "",
-              };
+            next[teammate.id] = { ...DEFAULT_STRUCTURED };
           });
           return next;
         });
 
-        // Load saved structured feedback only when viewing an open cycle detail
         if (!urlCycleId) return;
-        const targetCycle = c.find(
-          (cy) => cy.id === urlCycleId && cy.status === "open"
-        );
-        if (!targetCycle) return;
 
-        const savedList = await feedbackApi.getMyStructuredFeedback(targetCycle.id);
+        const targetCycle = c.find((cy) => cy.id === urlCycleId);
+        if (!targetCycle || targetCycle.status !== "open") {
+          setRantDone(false);
+          setRantText("");
+          setSavedStructuredReceivers(new Set());
+          setLastSavedStructured({});
+          setStructuredCollapsedIds(new Set());
+          return;
+        }
+
+        setSavedStructuredReceivers(new Set());
+        setLastSavedStructured({});
+        setStructuredCollapsedIds(new Set());
+
+        const [rantStatus, savedList] = await Promise.all([
+          feedbackApi.getMyRantStatus(targetCycle.id),
+          feedbackApi.getMyStructuredFeedback(targetCycle.id),
+        ]);
+
+        setRantDone(rantStatus.has_submitted);
+        setRantText("");
+
         if (!savedList?.length) return;
 
         const entries: Record<number, StructuredEntry> = {};
@@ -241,9 +261,16 @@ export default function Feedback() {
             comments_improvement: item.comments_improvement ?? "",
           };
         });
-        setStructured((prev) => ({ ...prev, ...entries }));
-        setLastSavedStructured((prev) => ({ ...prev, ...entries }));
+        setStructured((prev) => {
+          const next = { ...prev };
+          teammateList.forEach((tm) => {
+            if (entries[tm.id]) next[tm.id] = entries[tm.id];
+          });
+          return next;
+        });
+        setLastSavedStructured(entries);
         setSavedStructuredReceivers(new Set(savedList.map((i) => i.receiver_id)));
+        setStructuredCollapsedIds(new Set(savedList.map((i) => i.receiver_id)));
       })
       .catch((e) =>
         setError(e instanceof Error ? e.message : t("common.failedToLoad"))
@@ -310,6 +337,7 @@ export default function Feedback() {
       setStructured((prev) => ({ ...prev, [teammateId]: savedEntry }));
       setSavedStructuredReceivers((prev) => new Set(prev).add(teammateId));
       setStructuredCollapsedIds((prev) => new Set(prev).add(teammateId));
+      setStructuredJustSavedId(teammateId);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("feedback.failedSaveFeedback"));
     } finally {
@@ -337,11 +365,18 @@ export default function Feedback() {
     );
   };
 
+  /** First submit always allowed; later submits only when something changed. */
+  const canSubmitStructured = (teammateId: number): boolean => {
+    if (!savedStructuredReceivers.has(teammateId)) return true;
+    return hasStructuredChanges(teammateId);
+  };
+
   const updateStructured = (
     teammateId: number,
     field: "support" | "communication" | "comments_helpful" | "comments_improvement",
     value: number | string
   ) => {
+    setStructuredJustSavedId((prev) => (prev === teammateId ? null : prev));
     setStructured((prev) => ({
       ...prev,
       [teammateId]: {
@@ -355,6 +390,15 @@ export default function Feedback() {
   const structuredTotalCount = teammates.length;
   const structuredAllDone =
     structuredTotalCount > 0 && structuredSavedCount === structuredTotalCount;
+
+  const feedbackStepTotal = 1 + structuredTotalCount;
+  const feedbackStepDone = (rantDone ? 1 : 0) + structuredSavedCount;
+  const feedbackProgressPct =
+    feedbackStepTotal > 0
+      ? Math.min(100, Math.round((feedbackStepDone / feedbackStepTotal) * 100))
+      : 0;
+  const cycleFeedbackFullyComplete =
+    rantDone && (structuredTotalCount === 0 || structuredAllDone);
 
   // ─── render guards ───────────────────────────────────────────────────────────
 
@@ -523,6 +567,90 @@ export default function Feedback() {
             <p className="text-surface-text-muted text-sm">{t("feedback.noTeam")}</p>
           ) : (
             <div className="space-y-4">
+              {/* Overall progress for this cycle (rant + one card per teammate) */}
+              <div
+                className={`rounded-2xl border px-5 py-4 ${
+                  cycleFeedbackFullyComplete
+                    ? "border-surface-accent-cyan/45 bg-surface-accent-cyan/10"
+                    : "border-surface-pill-border bg-surface-card/90"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <span className="text-sm font-medium text-surface-text-strong">
+                    {t("feedback.overallProgressLabel")}
+                  </span>
+                  <span className="text-xs text-surface-text-muted tabular-nums">
+                    {t("feedback.overallProgressFraction", {
+                      done: feedbackStepDone,
+                      total: feedbackStepTotal,
+                    })}
+                  </span>
+                </div>
+                <div
+                  className="h-2 rounded-full overflow-hidden bg-white/[0.06] border border-surface-pill-border/60"
+                  role="progressbar"
+                  aria-valuenow={feedbackStepDone}
+                  aria-valuemin={0}
+                  aria-valuemax={feedbackStepTotal}
+                  aria-label={t("feedback.overallProgressAria", {
+                    done: feedbackStepDone,
+                    total: feedbackStepTotal,
+                  })}
+                >
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ease-out ${
+                      cycleFeedbackFullyComplete
+                        ? "bg-gradient-to-r from-surface-accent-cyan to-emerald-400/90"
+                        : "bg-surface-accent-cyan/85"
+                    }`}
+                    style={{ width: `${feedbackProgressPct}%` }}
+                  />
+                </div>
+                <ul className="mt-3 space-y-1.5 text-xs text-surface-text-muted">
+                  <li className="flex items-center gap-2">
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                        rantDone
+                          ? "border-surface-accent-cyan bg-surface-accent-cyan/25 text-surface-accent-cyan"
+                          : "border-surface-pill-border bg-white/[0.03] text-surface-text-muted"
+                      }`}
+                      aria-hidden
+                    >
+                      {rantDone ? "✓" : "1"}
+                    </span>
+                    <span className={rantDone ? "text-surface-text-strong" : ""}>
+                      {t("feedback.progressRantItem")}
+                    </span>
+                  </li>
+                  {structuredTotalCount > 0 && (
+                    <li className="flex items-center gap-2">
+                      <span
+                        className={`flex h-5 min-w-[1.25rem] px-1 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold tabular-nums ${
+                          structuredAllDone
+                            ? "border-surface-accent-cyan bg-surface-accent-cyan/25 text-surface-accent-cyan"
+                            : "border-surface-pill-border bg-white/[0.03] text-surface-text-muted"
+                        }`}
+                        aria-hidden
+                      >
+                        {structuredAllDone ? "✓" : `${structuredSavedCount}/${structuredTotalCount}`}
+                      </span>
+                      <span className={structuredAllDone ? "text-surface-text-strong" : ""}>
+                        {t("feedback.progressStructuredItem")}
+                      </span>
+                    </li>
+                  )}
+                </ul>
+                {cycleFeedbackFullyComplete && (
+                  <div className="mt-4 pt-3 border-t border-surface-accent-cyan/25">
+                    <p className="text-sm font-semibold text-surface-text-strong">
+                      {t("feedback.cycleCompleteTitle")}
+                    </p>
+                    <p className="text-xs text-surface-text-muted mt-1 leading-relaxed">
+                      {t("feedback.cycleCompleteBody")}
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* ── Rant — collapsible ── */}
               <section className={cardClass}>
@@ -531,10 +659,21 @@ export default function Feedback() {
                   onClick={() => setRantSectionOpen((o) => !o)}
                   className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-white/[0.02] transition-colors"
                 >
-                  <div>
-                    <h2 className="text-xl font-semibold text-surface-text-strong">
-                      {t("feedback.anonymousRant")}
-                    </h2>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl font-semibold text-surface-text-strong">
+                        {t("feedback.anonymousRant")}
+                      </h2>
+                      <span
+                        className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${
+                          rantDone
+                            ? "border-surface-accent-cyan/50 bg-surface-accent-cyan/15 text-surface-accent-cyan"
+                            : "border-surface-pill-border bg-white/[0.04] text-surface-text-muted"
+                        }`}
+                      >
+                        {rantDone ? t("feedback.rantStatusDone") : t("feedback.rantStatusPending")}
+                      </span>
+                    </div>
                     <p className="text-sm text-surface-text-muted mt-0.5">
                       {rantDone ? t("feedback.rantTeaserDone") : t("feedback.rantTeaser")}
                     </p>
@@ -647,7 +786,7 @@ export default function Feedback() {
                           disabled={rantSubmitting || !rantText.trim()}
                           className={`${btnClass} mt-4`}
                         >
-                          {rantSubmitting ? t("feedback.submitting") : t("feedback.submitRant")}
+                          {rantSubmitting ? t("feedback.submitting") : t("feedback.submitRantCta")}
                         </button>
                       </>
                     )}
@@ -662,19 +801,34 @@ export default function Feedback() {
                   onClick={() => setStructuredSectionOpen((o) => !o)}
                   className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-white/[0.02] transition-colors"
                 >
-                  <div>
-                    <h2 className="text-xl font-semibold text-surface-text-strong">
-                      {t("feedback.structuredTitle")}
-                    </h2>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl font-semibold text-surface-text-strong">
+                        {t("feedback.structuredTitle")}
+                      </h2>
+                      {teammates.length > 0 && (
+                        <span
+                          className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${
+                            structuredAllDone
+                              ? "border-surface-accent-cyan/50 bg-surface-accent-cyan/15 text-surface-accent-cyan"
+                              : "border-surface-pill-border bg-white/[0.04] text-surface-text-muted"
+                          }`}
+                        >
+                          {structuredAllDone
+                            ? t("feedback.structuredStatusDone")
+                            : t("feedback.structuredStatusPending", {
+                                saved: structuredSavedCount,
+                                total: structuredTotalCount,
+                              })}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-surface-text-muted mt-0.5">
                       {structuredAllDone
-                        ? t("feedback.structuredAllDone")
+                        ? t("feedback.structuredTeaserDone")
                         : teammates.length === 0
                           ? t("feedback.structuredNoTeammates")
-                          : t("feedback.structuredProgress", {
-                              saved: structuredSavedCount,
-                              total: structuredTotalCount,
-                            })}
+                          : t("feedback.structuredTeaserProgress")}
                     </p>
                   </div>
                   <ChevronDown open={structuredSectionOpen} />
@@ -869,13 +1023,25 @@ export default function Feedback() {
                                             }
                                             disabled={
                                               structuredSavingId === tm.id ||
-                                              !hasStructuredChanges(tm.id)
+                                              !canSubmitStructured(tm.id)
                                             }
-                                            className={`${btnClass} inline-flex items-center gap-2`}
+                                            className={`${btnClass} inline-flex items-center gap-2 ${
+                                              saved && !hasStructuredChanges(tm.id)
+                                                ? "opacity-70 border-surface-pill-border"
+                                                : ""
+                                            }`}
                                           >
-                                            {structuredSavingId === tm.id
-                                              ? t("common.saving")
-                                              : t("common.save")}
+                                            {structuredSavingId === tm.id ? (
+                                              t("feedback.structuredSubmitting")
+                                            ) : structuredJustSavedId === tm.id ? (
+                                              t("feedback.structuredSubmittedFlash")
+                                            ) : saved && !hasStructuredChanges(tm.id) ? (
+                                              t("feedback.structuredSubmittedState")
+                                            ) : saved ? (
+                                              t("feedback.updateStructuredForTeammate")
+                                            ) : (
+                                              t("feedback.submitStructuredForTeammate")
+                                            )}
                                           </button>
                                         )}
                                       </div>
@@ -886,9 +1052,9 @@ export default function Feedback() {
                             })}
                           </div>
                         </div>
-                        {structuredAllDone && (
-                          <p className="text-surface-accent-cyan text-sm mt-4">
-                            {t("feedback.allStructuredSaved")}
+                        {structuredAllDone && !rantDone && (
+                          <p className="text-sm mt-4 text-amber-200/90 border border-amber-400/25 bg-amber-400/10 rounded-xl px-3 py-2">
+                            {t("feedback.hintStructuredDoneRantPending")}
                           </p>
                         )}
                       </>

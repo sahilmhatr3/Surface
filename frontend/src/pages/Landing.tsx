@@ -4,7 +4,9 @@
  * Font: Satoshi (loaded in index.html via Fontshare).
  */
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useAuth } from "../hooks/useAuth";
 import {
   Users,
@@ -38,18 +40,96 @@ const btnOutline = `${btn} border border-white/30 text-white hover:bg-white/[0.0
 
 // ─── Section registry (drives floating nav) ───────────────────────────────────
 
-const SECTIONS = [
-  { id: "hero",           label: "Overview"     },
-  { id: "problem",        label: "The Problem"  },
-  { id: "standard-shift", label: "New Standard" },
-  { id: "how-it-works",   label: "How It Works" },
-  { id: "outcomes",       label: "Outcomes"     },
-  { id: "features",       label: "Product"      },
-  { id: "team",           label: "Team"         },
-  { id: "cta",            label: "Get Started"  },
+const LANDING_SECTIONS = [
+  { id: "hero", labelKey: "landing.sections.hero" },
+  { id: "problem", labelKey: "landing.sections.problem" },
+  { id: "standard-shift", labelKey: "landing.sections.standardShift" },
+  { id: "how-it-works", labelKey: "landing.sections.howItWorks" },
+  { id: "outcomes", labelKey: "landing.sections.outcomes" },
+  { id: "features", labelKey: "landing.sections.features" },
+  { id: "team", labelKey: "landing.sections.team" },
+  { id: "cta", labelKey: "landing.sections.cta" },
 ] as const;
 
-type SectionId = (typeof SECTIONS)[number]["id"];
+type SectionId = (typeof LANDING_SECTIONS)[number]["id"];
+
+// ─── Language switcher (landing chrome; matches dark marketing page) ───────
+
+const LANDING_LOCALES = [
+  { code: "en" as const, flag: "🇬🇧", labelKey: "lang.english" as const },
+  { code: "de" as const, flag: "🇩🇪", labelKey: "lang.german" as const },
+];
+
+function LandingLanguageSwitcher() {
+  const { i18n, t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const resolved = i18n.resolvedLanguage?.startsWith("de") ? "de" : "en";
+  const current = LANDING_LOCALES.find((l) => l.code === resolved) ?? LANDING_LOCALES[0];
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-white/15 bg-white/[0.06] backdrop-blur-xl text-sm text-white hover:bg-white/10 hover:border-white/25 transition-all"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={t("lang.switcherAria")}
+      >
+        <span className="text-base leading-none" aria-hidden>
+          {current.flag}
+        </span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="currentColor"
+          className={`text-white/50 transition-transform ${open ? "rotate-180" : ""}`}
+          aria-hidden
+        >
+          <path d="M6 8L1 3h10L6 8z" />
+        </svg>
+      </button>
+      {open && (
+        <ul
+          className="absolute right-0 top-full mt-1 py-1 min-w-[10rem] rounded-xl border border-white/12 bg-[#0d0a14]/95 backdrop-blur-xl shadow-lg z-[60]"
+          role="listbox"
+        >
+          {LANDING_LOCALES.map((loc) => (
+            <li key={loc.code} role="option" aria-selected={resolved === loc.code}>
+              <button
+                type="button"
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                  resolved === loc.code ? "bg-white/12 text-white" : "text-white/70 hover:bg-white/6 hover:text-white"
+                }`}
+                onClick={() => {
+                  void i18n.changeLanguage(loc.code);
+                  setOpen(false);
+                }}
+              >
+                <span className="text-base leading-none" aria-hidden>
+                  {loc.flag}
+                </span>
+                {t(loc.labelKey)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 // ─── AnimateIn ───────────────────────────────────────────────────────────────
 
@@ -135,6 +215,7 @@ function Label({ children }: { children: React.ReactNode }) {
 // ─── Floating section nav ─────────────────────────────────────────────────────
 
 function FloatingNav({ active }: { active: SectionId | null }) {
+  const { t } = useTranslation();
   const [scrolling, setScrolling] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -156,14 +237,15 @@ function FloatingNav({ active }: { active: SectionId | null }) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  const activeIdx = SECTIONS.findIndex(({ id }) => id === active);
+  const activeIdx = LANDING_SECTIONS.findIndex(({ id }) => id === active);
 
   return (
     <nav
-      aria-label="Page sections"
+      aria-label={t("landing.aria.pageSections")}
       className="fixed right-5 top-1/2 -translate-y-1/2 z-40 hidden lg:flex flex-col items-end"
     >
-      {SECTIONS.map(({ id, label }, i) => {
+      {LANDING_SECTIONS.map(({ id, labelKey }, i) => {
+        const label = t(labelKey);
         const isActive = active === id;
         const dist = activeIdx >= 0 ? Math.abs(i - activeIdx) : 99;
         // Bell-curve pop: active dot shifts left 16 px, falls off sharply with distance.
@@ -201,7 +283,7 @@ function FloatingNav({ active }: { active: SectionId | null }) {
             <button
               type="button"
               onClick={() => scrollTo(id)}
-              aria-label={`Navigate to ${label}`}
+              aria-label={t("landing.aria.navigateTo", { section: label })}
               style={{
                 width: 22,
                 height: 22,
@@ -241,6 +323,7 @@ function FloatingNav({ active }: { active: SectionId | null }) {
 // ─── Nav ─────────────────────────────────────────────────────────────────────
 
 function LandingNav() {
+  const { t } = useTranslation();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -251,7 +334,7 @@ function LandingNav() {
 
   return (
     <header
-      className={`fixed top-0 inset-x-0 z-50 flex items-center justify-between transition-all duration-300 ${
+      className={`fixed top-0 inset-x-0 z-50 flex items-center justify-between gap-4 transition-all duration-300 ${
         scrolled ? "py-3 px-6 sm:px-8 backdrop-blur-xl border-b" : "py-5 px-6 sm:px-10"
       }`}
       style={{
@@ -262,15 +345,18 @@ function LandingNav() {
       <Link
         to="/"
         className="flex items-center gap-2.5 font-semibold text-white text-[15px]"
-        aria-label="Surface home"
+        aria-label={t("landing.aria.home")}
       >
         <LogoMark size={22} />
         <span>Surface</span>
       </Link>
 
-      <Link to="/login" className={btnPrimary} style={{ paddingTop: "0.5rem", paddingBottom: "0.5rem" }}>
-        Log in
-      </Link>
+      <div className="flex items-center gap-3 shrink-0">
+        <LandingLanguageSwitcher />
+        <Link to="/login" className={btnPrimary} style={{ paddingTop: "0.5rem", paddingBottom: "0.5rem" }}>
+          {t("nav.login")}
+        </Link>
+      </div>
     </header>
   );
 }
@@ -278,6 +364,12 @@ function LandingNav() {
 // ─── Section 1: Hero ─────────────────────────────────────────────────────────
 
 function HeroSection() {
+  const { t } = useTranslation();
+  const mockThemes = [
+    t("landing.hero.mockTheme1"),
+    t("landing.hero.mockTheme2"),
+    t("landing.hero.mockTheme3"),
+  ];
   return (
     <section
       id="hero"
@@ -300,7 +392,7 @@ function HeroSection() {
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center text-center px-6 max-w-4xl mx-auto pt-24 pb-64">
         <AnimateIn>
-          <Label>AI Leadership Assistant</Label>
+          <Label>{t("landing.hero.label")}</Label>
         </AnimateIn>
 
         <AnimateIn delay={80}>
@@ -308,24 +400,24 @@ function HeroSection() {
             className="text-[clamp(2.4rem,6vw,4.5rem)] leading-[1.1] tracking-tight mb-6"
             style={{ color: TEXT }}
           >
-            <span className="font-normal">We help leaders </span>
-            <span className="font-bold text-white">develop high-performing teams.</span>
+            <span className="font-normal">{t("landing.hero.titleLead")}</span>
+            <span className="font-bold text-white">{t("landing.hero.titleStrong")}</span>
           </h1>
         </AnimateIn>
 
         <AnimateIn delay={160}>
           <p className="text-lg mb-10 max-w-xl" style={{ color: MUTED }}>
-            For the first time, the insight you've always needed, surfaced automatically.
+            {t("landing.hero.subtitle")}
           </p>
         </AnimateIn>
 
         <AnimateIn delay={240}>
           <div className="flex flex-wrap gap-3 justify-center">
             <Link to="/pilot" className={btnPrimary}>
-              Start a Pilot
+              {t("landing.hero.startPilot")}
             </Link>
             <button className={btnOutline} disabled>
-              Download PDF
+              {t("landing.hero.downloadPdf")}
             </button>
           </div>
         </AnimateIn>
@@ -344,9 +436,9 @@ function HeroSection() {
             style={{ background: "rgba(255,255,255,0.035)", border: `1px solid ${BORDER}` }}
           >
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold" style={{ color: MUTED }}>Team Health</span>
+              <span className="text-[11px] font-semibold" style={{ color: MUTED }}>{t("landing.hero.mockHealth")}</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-                style={{ background: "rgba(34,211,238,0.12)", color: ACCENT }}>Active</span>
+                style={{ background: "rgba(34,211,238,0.12)", color: ACCENT }}>{t("landing.hero.mockActive")}</span>
             </div>
             <div className="space-y-1.5">
               {[72, 85, 61].map((v, i) => (
@@ -365,16 +457,16 @@ function HeroSection() {
             className="w-64 shrink-0 rounded-xl p-4 flex flex-col gap-3"
             style={{ background: "rgba(255,255,255,0.035)", border: `1px solid ${BORDER}` }}
           >
-            <span className="text-[11px] font-semibold" style={{ color: MUTED }}>Current Cycle</span>
+            <span className="text-[11px] font-semibold" style={{ color: MUTED }}>{t("landing.hero.mockCycle")}</span>
             <div className="space-y-2">
-              {["Communication", "Collaboration", "Delivery"].map((t) => (
-                <div key={t} className="flex items-center gap-2">
+              {mockThemes.map((theme) => (
+                <div key={theme} className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ACCENT }} />
-                  <span className="text-xs text-white font-medium">{t}</span>
+                  <span className="text-xs text-white font-medium">{theme}</span>
                 </div>
               ))}
             </div>
-            <p className="text-[11px]" style={{ color: MUTED }}>Cycle closes in 4 days</p>
+            <p className="text-[11px]" style={{ color: MUTED }}>{t("landing.hero.mockCycleCloses")}</p>
           </div>
 
           {/* Mock card 3 */}
@@ -382,12 +474,12 @@ function HeroSection() {
             className="w-64 shrink-0 rounded-xl p-4 flex flex-col gap-2"
             style={{ background: "rgba(255,255,255,0.035)", border: `1px solid ${BORDER}` }}
           >
-            <span className="text-[11px] font-semibold" style={{ color: MUTED }}>Latest Action</span>
+            <span className="text-[11px] font-semibold" style={{ color: MUTED }}>{t("landing.hero.mockActionTitle")}</span>
             <p className="text-xs text-white leading-relaxed">
-              Schedule bi-weekly 1:1s to address communication gaps identified in the last cycle.
+              {t("landing.hero.mockActionBody")}
             </p>
             <span className="text-[10px] mt-auto px-2 py-0.5 rounded-full self-start font-medium"
-              style={{ background: "rgba(167,139,250,0.14)", color: "#a78bfa" }}>Team-wide</span>
+              style={{ background: "rgba(167,139,250,0.14)", color: "#a78bfa" }}>{t("landing.hero.mockTeamWide")}</span>
           </div>
         </div>
       </div>
@@ -397,48 +489,39 @@ function HeroSection() {
 
 // ─── Section 2: Problem ───────────────────────────────────────────────────────
 
-const PROBLEM_STATS = [
-  {
-    icon: Users,
-    label: "Team disengagement goes undetected",
-    sub: "By the time it's visible, the damage is already done.",
-  },
-  {
-    icon: Clock,
-    label: "Performance reviews happen too late",
-    sub: "Annual cycles capture yesterday's problems, not today's reality.",
-  },
-  {
-    icon: EyeOff,
-    label: "Leaders lack the visibility to act",
-    sub: "Without honest input, decisions are made on incomplete information.",
-  },
-];
+const PROBLEM_STAT_KEYS = ["stat1", "stat2", "stat3"] as const;
+
+const PROBLEM_STAT_ICONS = [Users, Clock, EyeOff] as const;
 
 function ProblemSection() {
+  const { t } = useTranslation();
   return (
     <section id="problem" className="py-28 lg:py-36 px-6" style={{ background: BG }}>
       <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1fr] gap-16 items-start">
         <AnimateIn>
-          <Label>The Problem</Label>
+          <Label>{t("landing.problem.label")}</Label>
           <h2
             className="text-[clamp(1.8rem,4vw,3rem)] font-bold leading-[1.2] tracking-tight mb-8"
             style={{ color: TEXT }}
           >
-            People leadership shouldn't stand in the way of profits and growth.
+            {t("landing.problem.title")}
           </h2>
           <p className="mb-4 leading-relaxed" style={{ color: MUTED }}>
-            Teams become quietly disengaged as team chemistry deteriorates.
+            {t("landing.problem.p1")}
           </p>
           <p className="mb-12 leading-relaxed" style={{ color: MUTED }}>
-            Buried in workload, leaders' efforts never translate into real performance.
+            {t("landing.problem.p2")}
           </p>
-          <Link to="/pilot" className={btnPrimary}>Start a Pilot</Link>
+          <Link to="/pilot" className={btnPrimary}>{t("landing.problem.startPilot")}</Link>
         </AnimateIn>
 
         <div className="flex flex-col gap-4">
-          {PROBLEM_STATS.map(({ icon: Icon, label, sub }, i) => (
-            <AnimateIn key={label} delay={i * 80}>
+          {PROBLEM_STAT_KEYS.map((statKey, i) => {
+            const Icon = PROBLEM_STAT_ICONS[i];
+            const label = t(`landing.problem.${statKey}.label`);
+            const sub = t(`landing.problem.${statKey}.sub`);
+            return (
+            <AnimateIn key={statKey} delay={i * 80}>
               <div
                 className="flex items-start gap-5 p-6 rounded-2xl"
                 style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}` }}
@@ -450,7 +533,8 @@ function ProblemSection() {
                 </div>
               </div>
             </AnimateIn>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -459,31 +543,20 @@ function ProblemSection() {
 
 // ─── Section 3: Standard Shift ────────────────────────────────────────────────
 
-const BEFORE = [
-  "Feedback filtered through hierarchy",
-  "Managers guessing what's really happening",
-  "Annual reviews capturing yesterday's problems",
-  "People development relying on individual manager capacity",
-];
-
-const AFTER = [
-  "Honest input from every voice on the team",
-  "Aggregated themes surfaced automatically after every cycle",
-  "Continuous insight that reflects how the team actually feels today",
-  "AI turns input into individual and team development plans at scale",
-];
-
 function StandardShiftSection() {
+  const { t } = useTranslation();
+  const before = t("landing.standard.before", { returnObjects: true }) as string[];
+  const after = t("landing.standard.after", { returnObjects: true }) as string[];
   return (
     <section id="standard-shift" className="py-28 lg:py-36 px-6" style={{ background: BG_ALT }}>
       <div className="max-w-5xl mx-auto">
         <AnimateIn className="text-center mb-16">
-          <Label>A new standard</Label>
+          <Label>{t("landing.standard.label")}</Label>
           <h2
             className="text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight"
             style={{ color: TEXT }}
           >
-            The standard has changed.
+            {t("landing.standard.title")}
           </h2>
         </AnimateIn>
 
@@ -494,10 +567,10 @@ function StandardShiftSection() {
               style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${BORDER}` }}
             >
               <p className="text-xs font-semibold tracking-[0.15em] uppercase mb-6" style={{ color: MUTED }}>
-                Before Surface
+                {t("landing.standard.beforeTitle")}
               </p>
               <ul className="space-y-4">
-                {BEFORE.map((item) => (
+                {before.map((item) => (
                   <li key={item} className="flex items-start gap-3">
                     <span className="mt-1.5 w-1 h-1 rounded-full shrink-0" style={{ background: MUTED }} />
                     <span className="text-sm leading-relaxed" style={{ color: MUTED }}>{item}</span>
@@ -513,10 +586,10 @@ function StandardShiftSection() {
               style={{ background: "rgba(34,211,238,0.04)", border: "1px solid rgba(34,211,238,0.15)" }}
             >
               <p className="text-xs font-semibold tracking-[0.15em] uppercase mb-6" style={{ color: ACCENT }}>
-                With Surface
+                {t("landing.standard.afterTitle")}
               </p>
               <ul className="space-y-4">
-                {AFTER.map((item) => (
+                {after.map((item) => (
                   <li key={item} className="flex items-start gap-3">
                     <span className="mt-1.5 w-1 h-1 rounded-full shrink-0" style={{ background: ACCENT }} />
                     <span className="text-sm leading-relaxed text-white">{item}</span>
@@ -529,8 +602,7 @@ function StandardShiftSection() {
 
         <AnimateIn delay={160}>
           <p className="text-center text-sm mt-12 max-w-2xl mx-auto leading-relaxed" style={{ color: MUTED }}>
-            This level of insight was previously inaccessible, not for lack of intention,
-            but for lack of the right infrastructure.
+            {t("landing.standard.footer")}
           </p>
         </AnimateIn>
       </div>
@@ -540,42 +612,31 @@ function StandardShiftSection() {
 
 // ─── Section 4: How it works ──────────────────────────────────────────────────
 
-const STEPS = [
-  {
-    icon: Users,
-    title: "Set up your team",
-    body: "Invite your team in minutes. Surface handles the structure.",
-  },
-  {
-    icon: MessageSquare,
-    title: "Collect honest input",
-    body: "Everyone shares structured, anonymous feedback each cycle.",
-  },
-  {
-    icon: Lightbulb,
-    title: "Lead with clarity",
-    body: "Surface translates input into insights and clear development guidance.",
-  },
-];
+const HOW_IT_WORKS_STEPS = [
+  { icon: Users, titleKey: "landing.howItWorks.step1Title", bodyKey: "landing.howItWorks.step1Body" },
+  { icon: MessageSquare, titleKey: "landing.howItWorks.step2Title", bodyKey: "landing.howItWorks.step2Body" },
+  { icon: Lightbulb, titleKey: "landing.howItWorks.step3Title", bodyKey: "landing.howItWorks.step3Body" },
+] as const;
 
 function HowItWorksSection() {
+  const { t } = useTranslation();
   return (
     <section id="how-it-works" className="py-28 lg:py-36 px-6" style={{ background: BG }}>
       <div className="max-w-5xl mx-auto">
         <AnimateIn className="text-center mb-16">
-          <Label>Process</Label>
+          <Label>{t("landing.howItWorks.label")}</Label>
           <h2
             className="text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight mb-3"
             style={{ color: TEXT }}
           >
-            How it works
+            {t("landing.howItWorks.title")}
           </h2>
-          <p style={{ color: MUTED }}>Three steps to a high-performing team.</p>
+          <p style={{ color: MUTED }}>{t("landing.howItWorks.subtitle")}</p>
         </AnimateIn>
 
         <div className="grid sm:grid-cols-3 gap-5">
-          {STEPS.map(({ icon: Icon, title, body }, i) => (
-            <AnimateIn key={title} delay={i * 100}>
+          {HOW_IT_WORKS_STEPS.map(({ icon: Icon, titleKey, bodyKey }, i) => (
+            <AnimateIn key={titleKey} delay={i * 100}>
               <div
                 className="relative overflow-hidden p-7 rounded-2xl h-full"
                 style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}` }}
@@ -588,8 +649,8 @@ function HowItWorksSection() {
                   {i + 1}
                 </span>
                 <Icon size={20} className="mb-6" style={{ color: ACCENT }} />
-                <h3 className="font-bold text-white text-base mb-2">{title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: MUTED }}>{body}</p>
+                <h3 className="font-bold text-white text-base mb-2">{t(titleKey)}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: MUTED }}>{t(bodyKey)}</p>
               </div>
             </AnimateIn>
           ))}
@@ -601,18 +662,144 @@ function HowItWorksSection() {
 
 // ─── Section 5: Outcomes (bento) ──────────────────────────────────────────────
 
+/** Decorative in-page “dashboard” preview (no real data; matches hero mock style). */
+function OutcomesDashboardMock({ t, themeLabels }: { t: TFunction; themeLabels: string[] }) {
+  return (
+    <div className="w-full flex flex-col gap-3 p-3 sm:p-4 text-left overflow-hidden" aria-hidden="true">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="flex gap-1 shrink-0">
+            <span className="w-2 h-2 rounded-full" style={{ background: "rgba(248,113,113,0.55)" }} />
+            <span className="w-2 h-2 rounded-full" style={{ background: "rgba(250,204,21,0.55)" }} />
+            <span className="w-2 h-2 rounded-full" style={{ background: "rgba(74,222,128,0.5)" }} />
+          </span>
+          <span className="text-[10px] font-semibold text-white/90 truncate">
+            {t("landing.outcomes.mockChromeTitle")}
+          </span>
+        </div>
+        <span
+          className="text-[9px] px-2 py-0.5 rounded-full shrink-0 font-medium whitespace-nowrap"
+          style={{ background: "rgba(34,211,238,0.12)", color: ACCENT }}
+        >
+          {t("landing.outcomes.mockOpenBadge")}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_minmax(0,7.75rem)] gap-3 flex-1 min-h-[108px]">
+        <div
+          className="rounded-lg p-2.5 flex flex-col min-h-[96px]"
+          style={{ background: "rgba(0,0,0,0.28)", border: `1px solid ${BORDER}` }}
+        >
+          <span className="text-[9px] font-medium mb-1.5" style={{ color: MUTED }}>
+            {t("landing.outcomes.mockTrendCaption")}
+          </span>
+          <svg viewBox="0 0 240 72" className="w-full h-auto max-h-[76px]" preserveAspectRatio="xMidYMid meet">
+            {[18, 36, 54].map((y) => (
+              <line key={y} x1="28" y1={y} x2="232" y2={y} stroke="white" strokeOpacity="0.06" strokeWidth="1" />
+            ))}
+            <path
+              d="M 28 48 L 76 42 L 124 44 L 172 32 L 220 36"
+              fill="none"
+              stroke="#67e8f9"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeOpacity="0.92"
+            />
+            <path
+              d="M 28 56 L 76 50 L 124 38 L 172 28 L 220 22"
+              fill="none"
+              stroke="#a78bfa"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeOpacity="0.92"
+            />
+            {[
+              [76, 42],
+              [124, 44],
+              [172, 32],
+              [220, 36],
+            ].map(([cx, cy], i) => (
+              <circle key={`c-${i}`} cx={cx} cy={cy} r="2.2" fill="#67e8f9" fillOpacity="0.95" />
+            ))}
+            {[
+              [76, 50],
+              [124, 38],
+              [172, 28],
+              [220, 22],
+            ].map(([cx, cy], i) => (
+              <circle key={`v-${i}`} cx={cx} cy={cy} r="2.2" fill="#a78bfa" fillOpacity="0.95" />
+            ))}
+          </svg>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 justify-center sm:justify-start">
+            <span className="text-[8px] flex items-center gap-1" style={{ color: MUTED }}>
+              <span className="w-2 h-0.5 rounded-full shrink-0" style={{ background: "#67e8f9" }} />
+              {t("landing.outcomes.mockLegendPerf")}
+            </span>
+            <span className="text-[8px] flex items-center gap-1" style={{ color: MUTED }}>
+              <span className="w-2 h-0.5 rounded-full shrink-0" style={{ background: "#a78bfa" }} />
+              {t("landing.outcomes.mockLegendImpact")}
+            </span>
+          </div>
+        </div>
+
+        <div
+          className="rounded-lg p-2.5 flex flex-col gap-1.5 justify-start"
+          style={{ background: "rgba(0,0,0,0.22)", border: `1px solid ${BORDER}` }}
+        >
+          <span className="text-[9px] font-medium" style={{ color: MUTED }}>
+            {t("landing.outcomes.mockThemesHeader")}
+          </span>
+          {themeLabels.map((label) => (
+            <div key={label} className="flex items-start gap-1.5">
+              <span className="w-1 h-1 rounded-full shrink-0 mt-1" style={{ background: ACCENT }} />
+              <span className="text-[9px] text-white/90 leading-snug line-clamp-2">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { key: "landing.outcomes.mockPillRants", v: "12" },
+            { key: "landing.outcomes.mockPillStructured", v: "28" },
+            { key: "landing.outcomes.mockPillThemes", v: "5" },
+          ] as const
+        ).map(({ key, v }) => (
+          <span
+            key={key}
+            className="text-[9px] px-2.5 py-1 rounded-full font-medium"
+            style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${BORDER}`, color: MUTED }}
+          >
+            <span className="text-white/90 font-semibold">{v}</span>
+            {" · "}
+            {t(key)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function OutcomesSection() {
+  const { t } = useTranslation();
+  const mockThemes = [
+    t("landing.hero.mockTheme1"),
+    t("landing.hero.mockTheme2"),
+    t("landing.hero.mockTheme3"),
+  ];
   return (
     <section id="outcomes" className="py-28 lg:py-36 px-6" style={{ background: BG_ALT }}>
       <div className="max-w-5xl mx-auto">
         <AnimateIn className="mb-12">
-          <Label>Outcomes</Label>
+          <Label>{t("landing.outcomes.label")}</Label>
           <h2
             className="text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight leading-[1.2]"
             style={{ color: TEXT }}
           >
-            What leading a high-performing
-            <br className="hidden sm:block" /> team looks like.
+            {t("landing.outcomes.titleLine1")}
+            <br className="hidden sm:block" />
+            {t("landing.outcomes.titleLine2")}
           </h2>
         </AnimateIn>
 
@@ -624,20 +811,16 @@ function OutcomesSection() {
             >
               <BarChart2 size={18} className="mb-4" style={{ color: ACCENT }} />
               <h3 className="font-bold text-white text-base mb-2">
-                Clear insight into individual and team dynamics
+                {t("landing.outcomes.card1Title")}
               </h3>
               <p className="text-sm mb-6" style={{ color: MUTED }}>
-                Understand exactly where your team stands, updated after every feedback cycle.
+                {t("landing.outcomes.card1Body")}
               </p>
               <div
-                className="flex-1 rounded-xl flex items-center justify-center min-h-[140px]"
+                className="flex-1 rounded-xl min-h-[160px] sm:min-h-[180px] flex flex-col"
                 style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}` }}
-                data-src="/assets/dashboard-screenshot.png"
               >
-                {/* REPLACE: /assets/dashboard-screenshot.png */}
-                <span className="text-xs font-mono px-3 text-center" style={{ color: MUTED }}>
-                  REPLACE: /assets/dashboard-screenshot.png
-                </span>
+                <OutcomesDashboardMock t={t} themeLabels={mockThemes} />
               </div>
             </div>
           </AnimateIn>
@@ -650,7 +833,7 @@ function OutcomesSection() {
               >
                 <Users size={18} className="mb-4" style={{ color: ACCENT }} />
                 <h3 className="font-bold text-white text-sm leading-snug">
-                  People development scales beyond one leader's capacity
+                  {t("landing.outcomes.card2Title")}
                 </h3>
               </div>
             </AnimateIn>
@@ -662,7 +845,7 @@ function OutcomesSection() {
               >
                 <TrendingUp size={18} className="mb-4" style={{ color: ACCENT }} />
                 <h3 className="font-bold text-white text-sm leading-snug">
-                  Teams grow into high performers driving real results
+                  {t("landing.outcomes.card3Title")}
                 </h3>
               </div>
             </AnimateIn>
@@ -675,56 +858,35 @@ function OutcomesSection() {
 
 // ─── Section 6: Features (light bg) ──────────────────────────────────────────
 
-const FEATURES = [
-  {
-    num: "01",
-    icon: Lock,
-    title: "Honest, Confidential Input",
-    body: "Structured and unstructured feedback flows from every team member, anonymized before it reaches a manager, so people say what they actually mean.",
-  },
-  {
-    num: "02",
-    icon: Cpu,
-    title: "Intelligent AI Analysis",
-    body: "Surface clusters themes, weighs sentiment, and identifies signal from noise, turning hundreds of individual responses into a coherent picture of team health.",
-  },
-  {
-    num: "03",
-    icon: Target,
-    title: "Actionable Development Plans",
-    body: "AI-generated actions, each editable by the manager, translate insight directly into specific, targeted next steps at both the individual and team level.",
-  },
-  {
-    num: "04",
-    icon: LayoutDashboard,
-    title: "Dashboard Visibility",
-    body: "A single place to track historical trends, score movement, open cycles, published actions, and upcoming feedback windows, so nothing gets lost.",
-  },
-];
+const FEATURE_BLOCKS = [
+  { num: "01", icon: Lock, titleKey: "landing.features.f1Title", bodyKey: "landing.features.f1Body" },
+  { num: "02", icon: Cpu, titleKey: "landing.features.f2Title", bodyKey: "landing.features.f2Body" },
+  { num: "03", icon: Target, titleKey: "landing.features.f3Title", bodyKey: "landing.features.f3Body" },
+  { num: "04", icon: LayoutDashboard, titleKey: "landing.features.f4Title", bodyKey: "landing.features.f4Body" },
+] as const;
 
 function FeaturesSection() {
+  const { t } = useTranslation();
   return (
     <section id="features" className="py-28 lg:py-36 px-6" style={{ background: "#f2effa" }}>
       <div className="max-w-5xl mx-auto">
         <AnimateIn>
           <p className="text-xs font-semibold tracking-[0.18em] uppercase mb-5" style={{ color: "#6b5faa" }}>
-            Product
+            {t("landing.features.label")}
           </p>
           <h2
             className="text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight mb-5"
             style={{ color: "#1a1225" }}
           >
-            Introducing Surface.
+            {t("landing.features.title")}
           </h2>
           <p className="max-w-2xl leading-relaxed mb-16 text-base" style={{ color: "#4a3f70" }}>
-            Surface is a leadership and team development system that turns honest team input
-            into actionable insight and clear guidance, enabling leaders to develop people
-            effectively at scale.
+            {t("landing.features.intro")}
           </p>
         </AnimateIn>
 
         <div className="grid sm:grid-cols-2 gap-5">
-          {FEATURES.map(({ num, icon: Icon, title, body }, i) => (
+          {FEATURE_BLOCKS.map(({ num, icon: Icon, titleKey, bodyKey }, i) => (
             <AnimateIn key={num} delay={i * 80}>
               <div
                 className="p-8 rounded-2xl bg-white h-full transition-shadow duration-200 hover:shadow-md"
@@ -734,8 +896,8 @@ function FeaturesSection() {
                   <span className="text-xs font-bold tracking-widest" style={{ color: "#6b5faa" }}>{num}</span>
                   <Icon size={16} style={{ color: "#6b5faa" }} />
                 </div>
-                <h3 className="font-bold text-base mb-3 leading-snug" style={{ color: "#1a1225" }}>{title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: "#4a3f70" }}>{body}</p>
+                <h3 className="font-bold text-base mb-3 leading-snug" style={{ color: "#1a1225" }}>{t(titleKey)}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "#4a3f70" }}>{t(bodyKey)}</p>
               </div>
             </AnimateIn>
           ))}
@@ -750,39 +912,33 @@ function FeaturesSection() {
 const FOUNDERS = [
   {
     name: "Moreno Nigro",
-    title: "Business Administration, University of Zurich",
-    sub: "Retail Strategy, Mercedes-Benz",
     asset: "/assets/moreno.jpg",
     website: "https://morenonigro.com",
     key: "moreno",
   },
   {
     name: "Sahil Mhatre",
-    title: "Forward Deployed Engineer, Palantir",
-    sub: "MS Computer Science, Cornell University",
     asset: "/assets/sahil.jpg",
     website: "https://sahilmhatre.com",
     key: "sahil",
   },
-];
+] as const;
 
 function TeamSection() {
+  const { t } = useTranslation();
   return (
     <section id="team" className="py-28 lg:py-36 px-6" style={{ background: BG }}>
       <div className="max-w-5xl mx-auto grid lg:grid-cols-[1fr_auto] gap-16 items-center">
         <AnimateIn>
-          <Label>The Team</Label>
+          <Label>{t("landing.team.label")}</Label>
           <p className="text-xl leading-relaxed max-w-lg" style={{ color: TEXT }}>
-            We know how difficult it is to develop people without the insight,
-            time, or guidance needed. With backgrounds in computer science and
-            business, we bring a fresh, unbiased perspective that makes high
-            performance happen by default.
+            {t("landing.team.body")}
           </p>
         </AnimateIn>
 
         {/* Inline founder cards at the same level */}
         <div className="flex gap-5 items-start">
-          {FOUNDERS.map(({ name, title, sub, asset, website, key }, i) => (
+          {FOUNDERS.map(({ name, asset, website, key }, i) => (
             <AnimateIn key={key} delay={i * 100}>
               <div
                 className="w-52 rounded-2xl overflow-hidden"
@@ -801,19 +957,23 @@ function TeamSection() {
                 </div>
                 <div className="p-5">
                   <p className="font-bold text-sm leading-snug mb-1" style={{ color: "#1a1225" }}>{name}</p>
-                  <p className="text-[11px] leading-snug mb-0.5" style={{ color: "#4a3f70" }}>{title}</p>
-                  <p className="text-[11px] leading-snug mb-4" style={{ color: "#7a6fa0" }}>{sub}</p>
+                  <p className="text-[11px] leading-snug mb-0.5" style={{ color: "#4a3f70" }}>
+                    {t(`landing.team.founders.${key}.title`)}
+                  </p>
+                  <p className="text-[11px] leading-snug mb-4" style={{ color: "#7a6fa0" }}>
+                    {t(`landing.team.founders.${key}.sub`)}
+                  </p>
                   <a
                     href={website}
                     className="inline-flex items-center justify-center w-full py-1.5 rounded-full text-[11px] font-semibold transition-colors"
                     style={{ border: "1px solid #d4cee8", color: "#4a3f70" }}
                     target="_blank"
                     rel="noreferrer"
-                    aria-label={`Visit ${name} website`}
+                    aria-label={t("landing.team.visitWebsiteAria", { name })}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#e4dfef")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    View Website
+                    {t("landing.team.viewWebsite")}
                   </a>
                 </div>
               </div>
@@ -828,6 +988,7 @@ function TeamSection() {
 // ─── Section 8: Final CTA ─────────────────────────────────────────────────────
 
 function FinalCTASection() {
+  const { t } = useTranslation();
   return (
     <section id="cta" className="py-32 lg:py-40 px-6 text-center" style={{ background: BG_ALT }}>
       <div className="max-w-3xl mx-auto">
@@ -836,19 +997,19 @@ function FinalCTASection() {
             className="text-[clamp(2.4rem,6vw,4rem)] font-bold tracking-tight leading-[1.1] mb-6"
             style={{ color: TEXT }}
           >
-            Your team's next level
+            {t("landing.cta.titleLine1")}
             <br />
-            starts here.
+            {t("landing.cta.titleLine2")}
           </h2>
           <p className="text-lg mb-12" style={{ color: MUTED }}>
-            Run a free pilot. See what your team has been waiting to say.
+            {t("landing.cta.subtitle")}
           </p>
           <Link
             to="/pilot"
             className={btnPrimary}
             style={{ fontSize: "0.9375rem", padding: "0.875rem 2rem" }}
           >
-            Start a Pilot
+            {t("landing.cta.startPilot")}
           </Link>
         </AnimateIn>
       </div>
@@ -859,18 +1020,19 @@ function FinalCTASection() {
 // ─── Footer ───────────────────────────────────────────────────────────────────
 
 function LandingFooter() {
+  const { t } = useTranslation();
   return (
     <footer
       className="py-8 px-6 sm:px-10"
       style={{ background: BG, borderTop: `1px solid ${BORDER}` }}
     >
       <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 text-sm font-semibold text-white" aria-label="Surface home">
+        <Link to="/" className="flex items-center gap-2 text-sm font-semibold text-white" aria-label={t("landing.aria.home")}>
           <LogoMark size={18} />
           <span>Surface</span>
         </Link>
         <p className="text-xs" style={{ color: MUTED }}>
-          &copy; {new Date().getFullYear()} Surface. All rights reserved.
+          {t("landing.footer.rights", { year: new Date().getFullYear() })}
         </p>
       </div>
     </footer>
@@ -882,7 +1044,17 @@ function LandingFooter() {
 export default function Landing() {
   const [activeSection, setActiveSection] = useState<SectionId | null>("hero");
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { i18n } = useTranslation();
   const { user, loading: authLoading } = useAuth();
+
+  // Optional: /?lng=de or ?lng=en (also picked up on full page load via i18n detector order).
+  useEffect(() => {
+    const lng = searchParams.get("lng");
+    if (lng === "en" || lng === "de") {
+      void i18n.changeLanguage(lng);
+    }
+  }, [searchParams, i18n]);
 
   // Logged-in users go straight to the app (password recovery keeps user=null until reset completes).
   useEffect(() => {
@@ -894,7 +1066,7 @@ export default function Landing() {
   // Track which section is in the middle of the viewport
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
-    SECTIONS.forEach(({ id }) => {
+    LANDING_SECTIONS.forEach(({ id }) => {
       const el = document.getElementById(id);
       if (!el) return;
       const obs = new IntersectionObserver(

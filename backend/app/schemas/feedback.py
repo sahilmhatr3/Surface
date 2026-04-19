@@ -16,6 +16,12 @@ class RantCreate(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=10)
 
 
+class MyRantStatusResponse(BaseModel):
+    """Whether the current user has already submitted a rant for this cycle (restore UI progress)."""
+
+    has_submitted: bool
+
+
 class RantResponse(BaseModel):
     """
     Rant as returned after submission (no user identity or raw text).

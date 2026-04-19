@@ -16,9 +16,11 @@ i18n
     supportedLngs: ["en", "de"],
     interpolation: { escapeValue: false },
     detection: {
-      order: ["localStorage", "navigator", "htmlTag"],
+      // Query string overrides cached language (e.g. /?lng=de for marketing links).
+      order: ["querystring", "localStorage", "navigator", "htmlTag"],
       caches: ["localStorage"],
       lookupLocalStorage: "surface_i18nextLng",
+      lookupQuerystring: "lng",
     },
     react: { useSuspense: false },
   });

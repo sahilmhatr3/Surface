@@ -157,10 +157,30 @@
     "removeTagAria": "Remove tag {{tag}}",
     "submitting": "Submitting…",
     "submitRant": "Submit rant",
+    "submitRantCta": "Submit rant for this cycle",
+    "overallProgressLabel": "This cycle",
+    "overallProgressFraction": "{{done}} / {{total}} complete",
+    "overallProgressAria": "Feedback progress: {{done}} of {{total}} steps complete",
+    "progressRantItem": "Anonymous rant",
+    "progressStructuredItem": "Structured feedback for teammates",
+    "cycleCompleteTitle": "You’re finished for this cycle",
+    "cycleCompleteBody": "Your rant (if you chose to send one) and structured feedback for everyone are on file. You can still expand a teammate and update a submission until the cycle closes.",
+    "rantStatusPending": "To do",
+    "rantStatusDone": "Submitted",
     "structuredTitle": "Structured feedback",
     "structuredAllDone": "All done",
     "structuredNoTeammates": "No teammates yet",
     "structuredProgress": "Rate each teammate (1–5) and save per person. {{saved}}/{{total}} saved.",
+    "structuredStatusDone": "All submitted",
+    "structuredStatusPending": "{{saved}}/{{total}}",
+    "structuredTeaserDone": "Everyone has a submitted card. Expand to review or update.",
+    "structuredTeaserProgress": "Submit once per teammate — your answers are sent to the server when you press submit on each card.",
+    "submitStructuredForTeammate": "Submit feedback",
+    "updateStructuredForTeammate": "Update submission",
+    "structuredSubmitting": "Submitting…",
+    "structuredSubmittedFlash": "Submitted ✓",
+    "structuredSubmittedState": "Submitted",
+    "hintStructuredDoneRantPending": "Structured feedback is complete. Submit your anonymous rant (above) to finish everything for this cycle.",
     "noOtherMembers": "No other team members in your team yet.",
     "progressAria": "Progress {{saved}} of {{total}}",
     "savedNamed": "Saved: {{name}}",
@@ -334,5 +354,145 @@
     "actionRowTeam": "Team",
     "hideFromTeam": "Hide from team",
     "showToTeam": "Show to team"
+  },
+  "landing": {
+    "aria": {
+      "home": "Surface home",
+      "pageSections": "Page sections",
+      "navigateTo": "Navigate to {{section}}"
+    },
+    "sections": {
+      "hero": "Overview",
+      "problem": "The Problem",
+      "standardShift": "New Standard",
+      "howItWorks": "How It Works",
+      "outcomes": "Outcomes",
+      "features": "Product",
+      "team": "Team",
+      "cta": "Get Started"
+    },
+    "hero": {
+      "label": "AI Leadership Assistant",
+      "titleLead": "We help leaders ",
+      "titleStrong": "develop high-performing teams.",
+      "subtitle": "For the first time, the insight you've always needed, surfaced automatically.",
+      "startPilot": "Start a Pilot",
+      "downloadPdf": "Download PDF",
+      "mockHealth": "Team Health",
+      "mockActive": "Active",
+      "mockCycle": "Current Cycle",
+      "mockTheme1": "Communication",
+      "mockTheme2": "Collaboration",
+      "mockTheme3": "Delivery",
+      "mockCycleCloses": "Cycle closes in 4 days",
+      "mockActionTitle": "Latest Action",
+      "mockActionBody": "Schedule bi-weekly 1:1s to address communication gaps identified in the last cycle.",
+      "mockTeamWide": "Team-wide"
+    },
+    "problem": {
+      "label": "The Problem",
+      "title": "People leadership shouldn't stand in the way of profits and growth.",
+      "p1": "Teams become quietly disengaged as team chemistry deteriorates.",
+      "p2": "Buried in workload, leaders' efforts never translate into real performance.",
+      "startPilot": "Start a Pilot",
+      "stat1": {
+        "label": "Team disengagement goes undetected",
+        "sub": "By the time it's visible, the damage is already done."
+      },
+      "stat2": {
+        "label": "Performance reviews happen too late",
+        "sub": "Annual cycles capture yesterday's problems, not today's reality."
+      },
+      "stat3": {
+        "label": "Leaders lack the visibility to act",
+        "sub": "Without honest input, decisions are made on incomplete information."
+      }
+    },
+    "standard": {
+      "label": "A new standard",
+      "title": "The standard has changed.",
+      "beforeTitle": "Before Surface",
+      "afterTitle": "With Surface",
+      "footer": "This level of insight was previously inaccessible, not for lack of intention, but for lack of the right infrastructure.",
+      "before": [
+        "Feedback filtered through hierarchy",
+        "Managers guessing what's really happening",
+        "Annual reviews capturing yesterday's problems",
+        "People development relying on individual manager capacity"
+      ],
+      "after": [
+        "Honest input from every voice on the team",
+        "Aggregated themes surfaced automatically after every cycle",
+        "Continuous insight that reflects how the team actually feels today",
+        "AI turns input into individual and team development plans at scale"
+      ]
+    },
+    "howItWorks": {
+      "label": "Process",
+      "title": "How it works",
+      "subtitle": "Three steps to a high-performing team.",
+      "step1Title": "Set up your team",
+      "step1Body": "Invite your team in minutes. Surface handles the structure.",
+      "step2Title": "Collect honest input",
+      "step2Body": "Everyone shares structured, anonymous feedback each cycle.",
+      "step3Title": "Lead with clarity",
+      "step3Body": "Surface translates input into insights and clear development guidance."
+    },
+    "outcomes": {
+      "label": "Outcomes",
+      "titleLine1": "What leading a high-performing",
+      "titleLine2": " team looks like.",
+      "card1Title": "Clear insight into individual and team dynamics",
+      "card1Body": "Understand exactly where your team stands, updated after every feedback cycle.",
+      "mockChromeTitle": "Surface — Dashboard",
+      "mockOpenBadge": "Open",
+      "mockTrendCaption": "Average scores (illustrative)",
+      "mockLegendPerf": "Performance",
+      "mockLegendImpact": "Impact on team",
+      "mockThemesHeader": "This cycle",
+      "mockPillRants": "Rants",
+      "mockPillStructured": "Structured",
+      "mockPillThemes": "Themes",
+      "card2Title": "People development scales beyond one leader's capacity",
+      "card3Title": "Teams grow into high performers driving real results"
+    },
+    "features": {
+      "label": "Product",
+      "title": "Introducing Surface.",
+      "intro": "Surface is a leadership and team development system that turns honest team input into actionable insight and clear guidance, enabling leaders to develop people effectively at scale.",
+      "f1Title": "Honest, Confidential Input",
+      "f1Body": "Structured and unstructured feedback flows from every team member, anonymized before it reaches a manager, so people say what they actually mean.",
+      "f2Title": "Intelligent AI Analysis",
+      "f2Body": "Surface clusters themes, weighs sentiment, and identifies signal from noise, turning hundreds of individual responses into a coherent picture of team health.",
+      "f3Title": "Actionable Development Plans",
+      "f3Body": "AI-generated actions, each editable by the manager, translate insight directly into specific, targeted next steps at both the individual and team level.",
+      "f4Title": "Dashboard Visibility",
+      "f4Body": "A single place to track historical trends, score movement, open cycles, published actions, and upcoming feedback windows, so nothing gets lost."
+    },
+    "team": {
+      "label": "The Team",
+      "body": "We know how difficult it is to develop people without the insight, time, or guidance needed. With backgrounds in computer science and business, we bring a fresh, unbiased perspective that makes high performance happen by default.",
+      "founders": {
+        "moreno": {
+          "title": "Business Administration, University of Zurich",
+          "sub": "Retail Strategy, Mercedes-Benz"
+        },
+        "sahil": {
+          "title": "Forward Deployed Engineer, Palantir",
+          "sub": "MS Computer Science, Cornell University"
+        }
+      },
+      "viewWebsite": "View Website",
+      "visitWebsiteAria": "Visit {{name}} website"
+    },
+    "cta": {
+      "titleLine1": "Your team's next level",
+      "titleLine2": "starts here.",
+      "subtitle": "Run a free pilot. See what your team has been waiting to say.",
+      "startPilot": "Start a Pilot"
+    },
+    "footer": {
+      "rights": "© {{year}} Surface. All rights reserved."
+    }
   }
 }
