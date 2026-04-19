@@ -3,7 +3,9 @@ Feedback: rants and structured feedback.
 """
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.utils import normalize_content_locale
 
 SCORE_MIN, SCORE_MAX = 1, 5
 
@@ -14,6 +16,14 @@ class RantCreate(BaseModel):
     cycle_id: int
     text: str = Field(..., min_length=1, max_length=10_000)
     tags: list[str] = Field(default_factory=list, max_length=10)
+    content_locale: str | None = Field(None, max_length=10)
+
+    @field_validator("content_locale", mode="before")
+    @classmethod
+    def _normalize_rant_locale(cls, v: object) -> str | None:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return normalize_content_locale(str(v))
 
 
 class MyRantStatusResponse(BaseModel):
@@ -52,6 +62,14 @@ class StructuredFeedbackCreate(BaseModel):
     scores: StructuredFeedbackScores
     comments_helpful: str | None = Field(None, max_length=2000)
     comments_improvement: str | None = Field(None, max_length=2000)
+    content_locale: str | None = Field(None, max_length=10)
+
+    @field_validator("content_locale", mode="before")
+    @classmethod
+    def _normalize_structured_locale(cls, v: object) -> str | None:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return normalize_content_locale(str(v))
 
 
 class StructuredFeedbackBatchItem(BaseModel):
@@ -68,6 +86,14 @@ class StructuredFeedbackBatchCreate(BaseModel):
 
     cycle_id: int
     feedback: list[StructuredFeedbackBatchItem] = Field(..., min_length=1, max_length=50)
+    content_locale: str | None = Field(None, max_length=10)
+
+    @field_validator("content_locale", mode="before")
+    @classmethod
+    def _normalize_batch_locale(cls, v: object) -> str | None:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return normalize_content_locale(str(v))
 
 
 class StructuredFeedbackResponse(BaseModel):

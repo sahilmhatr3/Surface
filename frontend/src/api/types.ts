@@ -226,6 +226,8 @@ export interface RantCreate {
   cycle_id: number;
   text: string;
   tags?: string[];
+  /** UI language for AI output (`en` | `de`). Omitted = legacy English. */
+  content_locale?: string | null;
 }
 
 export interface StructuredFeedbackScores {
@@ -239,6 +241,7 @@ export interface StructuredFeedbackCreate {
   scores: StructuredFeedbackScores;
   comments_helpful?: string | null;
   comments_improvement?: string | null;
+  content_locale?: string | null;
 }
 
 export interface StructuredFeedbackBatchItem {
@@ -251,6 +254,7 @@ export interface StructuredFeedbackBatchItem {
 export interface StructuredFeedbackBatchCreate {
   cycle_id: number;
   feedback: StructuredFeedbackBatchItem[];
+  content_locale?: string | null;
 }
 
 /** One saved structured feedback item (current user's submissions for a cycle). */

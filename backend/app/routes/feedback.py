@@ -20,6 +20,7 @@ from app.schemas.feedback import (
 from app.core.config import settings
 from app.core.security import get_current_user
 from app.services import ai as ai_service
+from app.utils import normalize_content_locale
 
 router = APIRouter()
 
@@ -140,6 +141,7 @@ def _process_rant_async(
     names: list[str],
     teammates_name_id: list[tuple[str, int]],
     cycle_id: int,
+    content_locale: str | None = None,
 ) -> None:
     """
     AI enrichment for a submitted rant — runs after the HTTP response is already sent.
@@ -155,10 +157,12 @@ def _process_rant_async(
         if not rant:
             return
 
+        out_loc = normalize_content_locale(content_locale)
+
         # Step 1: de-identify raw text and classify theme + sentiment
         try:
-            anonymized = ai_service.deidentify_text(raw_text, names)
-            theme, sentiment = ai_service.classify_theme_and_sentiment(anonymized)
+            anonymized = ai_service.deidentify_text(raw_text, names, output_locale=out_loc)
+            theme, sentiment = ai_service.classify_theme_and_sentiment(anonymized, output_locale=out_loc)
         except Exception:
             # Fall back to storing the raw text anonymized as-is rather than losing the rant
             anonymized = raw_text
@@ -177,14 +181,18 @@ def _process_rant_async(
                 ).delete(synchronize_session=False)
 
                 segments_data = ai_service.dissect_rant_to_directed_segments(
-                    raw_text, [n for n, _ in teammates_name_id]
+                    raw_text,
+                    [n for n, _ in teammates_name_id],
+                    output_locale=out_loc,
                 )
                 name_to_id = {name: uid for name, uid in teammates_name_id}
                 for seg in segments_data:
                     receiver_id = name_to_id.get(seg["receiver_name"])
                     if receiver_id is None:
                         continue
-                    safe_snippet = ai_service.deidentify_text(seg["snippet"], names)
+                    safe_snippet = ai_service.deidentify_text(
+                        seg["snippet"], names, output_locale=out_loc
+                    )
                     db.add(
                         RantDirectedSegment(
                             cycle_id=cycle_id,
@@ -228,6 +236,7 @@ def submit_rant(
     names = _team_member_names(db, cycle.team_id)
     teammates_name_id = _teammates_excluding_self(db, cycle.team_id, current_user.id)
     raw_text = body.text
+    stored_locale = body.content_locale
 
     # Persist the rant immediately with placeholder values so the user gets
     # an instant response. The background task will overwrite these shortly.
@@ -238,6 +247,8 @@ def submit_rant(
         existing.anonymized_text = ""
         existing.theme = "processing"
         existing.sentiment = "processing"
+        if stored_locale is not None:
+            existing.content_locale = stored_locale
         rant = existing
     else:
         rant = Rant(
@@ -247,6 +258,7 @@ def submit_rant(
             anonymized_text="",
             theme="processing",
             sentiment="processing",
+            content_locale=stored_locale,
         )
         db.add(rant)
 
@@ -260,6 +272,7 @@ def submit_rant(
         names=names,
         teammates_name_id=teammates_name_id,
         cycle_id=body.cycle_id,
+        content_locale=rant.content_locale,
     )
 
     return rant
@@ -302,6 +315,8 @@ def submit_structured(
         existing.scores = scores_dict
         existing.comments_helpful = body.comments_helpful
         existing.comments_improvement = body.comments_improvement
+        if body.content_locale is not None:
+            existing.content_locale = body.content_locale
         db.commit()
         db.refresh(existing)
         return existing
@@ -312,6 +327,7 @@ def submit_structured(
         scores=scores_dict,
         comments_helpful=body.comments_helpful,
         comments_improvement=body.comments_improvement,
+        content_locale=body.content_locale,
     )
     db.add(sf)
     db.commit()
@@ -350,6 +366,8 @@ def submit_structured_batch(
             existing.scores = scores_dict
             existing.comments_helpful = item.comments_helpful
             existing.comments_improvement = item.comments_improvement
+            if body.content_locale is not None:
+                existing.content_locale = body.content_locale
             db.commit()
             db.refresh(existing)
             results.append(existing)
@@ -361,6 +379,7 @@ def submit_structured_batch(
                 scores=scores_dict,
                 comments_helpful=item.comments_helpful,
                 comments_improvement=item.comments_improvement,
+                content_locale=body.content_locale,
             )
             db.add(sf)
             db.commit()

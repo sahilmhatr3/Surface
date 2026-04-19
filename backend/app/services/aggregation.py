@@ -24,8 +24,29 @@ from app.services.ai import (
     summarize_feedback_cycle,
     synthesize_structured_receiver_comments,
 )
+from app.utils import dominant_content_locale, normalize_content_locale
 
 RAW_DATA_RETENTION_DAYS = 7
+
+
+def _sentiment_mix_summary(pos: int, neg: int, neu: int, output_locale: str) -> str:
+    loc = normalize_content_locale(output_locale)
+    parts: list[str] = []
+    if loc == "de":
+        if pos:
+            parts.append(f"{pos} positiv")
+        if neg:
+            parts.append(f"{neg} negativ")
+        if neu:
+            parts.append(f"{neu} neutral")
+    else:
+        if pos:
+            parts.append(f"{pos} positive")
+        if neg:
+            parts.append(f"{neg} negative")
+        if neu:
+            parts.append(f"{neu} neutral")
+    return ", ".join(parts) if parts else "neutral"
 
 
 def cleanup_expired_raw_data() -> None:
@@ -102,6 +123,10 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
     rants = db.query(Rant).filter(Rant.cycle_id == cycle_id).all()
     structured = db.query(StructuredFeedback).filter(StructuredFeedback.cycle_id == cycle_id).all()
 
+    compile_locale = dominant_content_locale(
+        [r.content_locale for r in rants] + [s.content_locale for s in structured]
+    )
+
     # Participation: distinct submitters
     participation_rants = len({r.user_id for r in rants})
     participation_structured = len({s.giver_id for s in structured})
@@ -116,14 +141,7 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
         pos = sum(1 for s in sentiments_list if s == "positive")
         neg = sum(1 for s in sentiments_list if s == "negative")
         neu = sum(1 for s in sentiments_list if s == "neutral")
-        parts = []
-        if pos:
-            parts.append(f"{pos} positive")
-        if neg:
-            parts.append(f"{neg} negative")
-        if neu:
-            parts.append(f"{neu} neutral")
-        sentiment_summary = ", ".join(parts) if parts else "neutral"
+        sentiment_summary = _sentiment_mix_summary(pos, neg, neu, compile_locale)
         dominant_sentiment = "neutral"
         if neg >= pos and neg >= neu and neg > 0:
             dominant_sentiment = "negative"
@@ -136,7 +154,11 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
         texts = [r.anonymized_text for r in theme_rants if r.anonymized_text]
         try:
             example_comments = reword_theme_feedback_to_key_points(
-                texts, [r.sentiment for r in theme_rants if r.anonymized_text], theme, max_points=8
+                texts,
+                [r.sentiment for r in theme_rants if r.anonymized_text],
+                theme,
+                max_points=8,
+                output_locale=compile_locale,
             )
         except Exception:
             example_comments = []
@@ -185,6 +207,7 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
                     raw_improvement,
                     average_scores,
                     max_points=10,
+                    output_locale=compile_locale,
                 )
             except Exception:
                 snippets_helpful, snippets_improvement = [], []
@@ -192,21 +215,33 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
             # Fallback: same non-verbatim key-point pass as team themes (per column).
             if not snippets_helpful and raw_helpful:
                 try:
+                    fb_theme = (
+                        "Peer-Rückmeldung zu Stärken"
+                        if normalize_content_locale(compile_locale) == "de"
+                        else "peer feedback on strengths"
+                    )
                     snippets_helpful = reword_theme_feedback_to_key_points(
                         raw_helpful,
                         ["neutral"] * len(raw_helpful),
-                        "peer feedback on strengths",
+                        fb_theme,
                         max_points=10,
+                        output_locale=compile_locale,
                     )
                 except Exception:
                     snippets_helpful = []
             if not snippets_improvement and raw_improvement:
                 try:
+                    imp_theme = (
+                        "Peer-Rückmeldung zu Entwicklungsfeldern"
+                        if normalize_content_locale(compile_locale) == "de"
+                        else "peer feedback on areas to develop"
+                    )
                     snippets_improvement = reword_theme_feedback_to_key_points(
                         raw_improvement,
                         ["neutral"] * len(raw_improvement),
-                        "peer feedback on areas to develop",
+                        imp_theme,
                         max_points=10,
+                        output_locale=compile_locale,
                     )
                 except Exception:
                     snippets_improvement = []
@@ -234,13 +269,25 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
     # --- Second AI pass: cycle-level summary from all rants + structured comments ---
     rant_texts = [r.anonymized_text for r in rants if r.anonymized_text]
     structured_snippets = []
+    lbl_ok = (
+        "[Was gut ankommt]"
+        if normalize_content_locale(compile_locale) == "de"
+        else "[What helped]"
+    )
+    lbl_bad = (
+        "[Verbesserungspotenzial]"
+        if normalize_content_locale(compile_locale) == "de"
+        else "[Could improve]"
+    )
     for s in structured:
         if s.comments_helpful:
-            structured_snippets.append(f"[What helped] {s.comments_helpful}")
+            structured_snippets.append(f"{lbl_ok} {s.comments_helpful}")
         if s.comments_improvement:
-            structured_snippets.append(f"[Could improve] {s.comments_improvement}")
+            structured_snippets.append(f"{lbl_bad} {s.comments_improvement}")
     try:
-        summary = summarize_feedback_cycle(rant_texts, structured_snippets)
+        summary = summarize_feedback_cycle(
+            rant_texts, structured_snippets, output_locale=compile_locale
+        )
         if summary:
             cycle.summary_text = summary
     except Exception:
@@ -288,6 +335,7 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
                 summary_text=cycle.summary_text or "",
                 themes=themes_payload,
                 receiver_summaries=receivers_payload,
+                output_locale=compile_locale,
             )
 
             # Map receiver names back to IDs

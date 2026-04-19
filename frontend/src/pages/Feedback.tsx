@@ -280,6 +280,9 @@ export default function Feedback() {
 
   // ─── handlers ───────────────────────────────────────────────────────────────
 
+  const feedbackContentLocale = (): "en" | "de" =>
+    i18n.language?.toLowerCase().startsWith("de") ? "de" : "en";
+
   const toggleTag = (tag: string) => {
     setRantTags((prev) =>
       prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]
@@ -304,6 +307,7 @@ export default function Feedback() {
         cycle_id: selectedCycle.id,
         text: rantText.trim(),
         tags: rantTags,
+        content_locale: feedbackContentLocale(),
       });
       setRantDone(true);
     } catch (e) {
@@ -326,6 +330,7 @@ export default function Feedback() {
         scores: { support: s.support, communication: s.communication } as StructuredFeedbackScores,
         comments_helpful: s.comments_helpful.trim() || null,
         comments_improvement: s.comments_improvement.trim() || null,
+        content_locale: feedbackContentLocale(),
       });
       const savedEntry: StructuredEntry = {
         support: s.support,

@@ -12,6 +12,7 @@ import re
 from openai import OpenAI
 
 from app.core.config import settings
+from app.utils import normalize_content_locale
 
 
 def _client() -> OpenAI:
@@ -20,7 +21,36 @@ def _client() -> OpenAI:
     return OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
-def deidentify_text(raw_text: str, employee_names: list[str]) -> str:
+def _system_language_clause(output_locale: str | None) -> str:
+    loc = normalize_content_locale(output_locale)
+    if loc == "de":
+        return (
+            " Ausgabesprache: Deutsch (professionell, Arbeitskontext). "
+            "Übersetze nicht ins Englische; behalte Sinn und Ton bei."
+        )
+    return " Output language: clear professional English."
+
+
+def _cycle_summary_headings(output_locale: str | None) -> tuple[str, str, str]:
+    if normalize_content_locale(output_locale) == "de":
+        return (
+            "Was gut funktioniert",
+            "Was nicht gut funktioniert",
+            "Top-Prioritäten nächster Zyklus",
+        )
+    return (
+        "What is working",
+        "What is not working",
+        "Top priorities next cycle",
+    )
+
+
+def deidentify_text(
+    raw_text: str,
+    employee_names: list[str],
+    *,
+    output_locale: str | None = None,
+) -> str:
     """
     Return a version of raw_text with names and obvious identifiers removed or generalized.
     employee_names: list of names (e.g. from the same team) to redact so they cannot be inferred.
@@ -37,6 +67,7 @@ def deidentify_text(raw_text: str, employee_names: list[str]) -> str:
                 "content": (
                     "Rewrite the message to remove or generalize any names, roles, or identifying details. "
                     "Keep the same meaning and tone. Output only the rewritten text, nothing else."
+                    + _system_language_clause(output_locale)
                 ),
             },
             {
@@ -50,12 +81,22 @@ def deidentify_text(raw_text: str, employee_names: list[str]) -> str:
     return out if out else raw_text
 
 
-def classify_theme_and_sentiment(text: str) -> tuple[str, str]:
+def classify_theme_and_sentiment(text: str, *, output_locale: str | None = None) -> tuple[str, str]:
     """
     Return (theme, sentiment) for a single feedback message.
     theme: short label (e.g. workload, communication, tools).
     sentiment: one of negative, neutral, positive.
     """
+    loc = normalize_content_locale(output_locale)
+    theme_hint = (
+        "theme: ein sehr kurzes Schlagwort auf Deutsch (z. B. Arbeitsbelastung, Kommunikation, Führung, "
+        "Werkzeuge, Kultur, Onboarding, Sonstiges)"
+        if loc == "de"
+        else (
+            "theme: short English label (e.g. workload, communication, leadership, tools, culture, "
+            "onboarding, other)"
+        )
+    )
     client = _client()
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -63,9 +104,11 @@ def classify_theme_and_sentiment(text: str) -> tuple[str, str]:
             {
                 "role": "system",
                 "content": (
-                    "Classify the message into one theme (short label, e.g. workload, communication, leadership, "
-                    "tools, culture, onboarding, other) and one sentiment: negative, neutral, or positive. "
+                    f"Classify the message into one theme ({theme_hint}) "
+                    "and one sentiment. Sentiment MUST be exactly one of these English tokens only: "
+                    "negative, neutral, positive (lowercase). "
                     "Reply with exactly a JSON object: {\"theme\": \"...\", \"sentiment\": \"...\"}. No other text."
+                    + _system_language_clause(output_locale)
                 ),
             },
             {"role": "user", "content": text},
@@ -91,6 +134,8 @@ def classify_theme_and_sentiment(text: str) -> tuple[str, str]:
 def dissect_rant_to_directed_segments(
     rant_text: str,
     teammate_names: list[str],
+    *,
+    output_locale: str | None = None,
 ) -> list[dict]:
     """
     From raw rant text, identify which teammates are mentioned and extract one snippet per person.
@@ -104,6 +149,21 @@ def dissect_rant_to_directed_segments(
     if not settings.OPENAI_API_KEY:
         return []
 
+    loc = normalize_content_locale(output_locale)
+    theme_line = (
+        "(5) theme: ein kurzes Schlagwort auf Deutsch (z. B. Kommunikation, Arbeitsbelastung, Unterstützung). "
+        if loc == "de"
+        else "(5) theme: one short English label (e.g. communication, workload, support). "
+    )
+    anon_examples = (
+        "(3) Anonymität: neutrale oder passive Formulierungen (z. B. 'Es gibt den Eindruck, dass …', "
+        "'Rückmeldungen deuten darauf hin, dass …'). Kein 'ich', kein 'jemand hat gesagt'."
+        if loc == "de"
+        else (
+            "(3) Anonymity: write so the receiver can NEVER infer who wrote it. Use neutral, plural, or passive wording only "
+            "(e.g. 'Feedback suggests...', 'There is a sense that...'). Do NOT use 'I', 'my', or 'someone said'. "
+        )
+    )
     names_list = ", ".join(repr(n) for n in teammate_names[:30])
     client = _client()
     resp = client.chat.completions.create(
@@ -117,12 +177,13 @@ def dissect_rant_to_directed_segments(
                     "(2) For each such person, output exactly one reworded key point that captures the feedback ABOUT THEM. "
                     "CRITICAL: Do NOT quote the message. Express each point entirely in your own words; no verbatim phrasing from the original. "
                     "One short sentence or key phrase only—the most important point. No overlap or repetition across snippets. "
-                    "(3) Anonymity: write so the receiver can NEVER infer who wrote it. Use neutral, plural, or passive wording only "
-                    "(e.g. 'Feedback suggests...', 'There is a sense that...'). Do NOT use 'I', 'my', or 'someone said'. "
-                    "(4) receiver_name must be the EXACT name from the list provided. "
-                    "(5) theme: one short label (e.g. communication, workload, support). sentiment: one of negative, neutral, positive. "
+                    + anon_examples
+                    + "(4) receiver_name must be the EXACT name from the list provided (do not translate names). "
+                    + theme_line
+                    + "sentiment MUST be exactly one of: negative, neutral, positive (English, lowercase). "
                     "Reply with ONLY a JSON array of objects, each with keys: receiver_name, snippet, theme, sentiment. "
                     "If no one in the list is clearly mentioned, reply with an empty array: []."
+                    + _system_language_clause(output_locale)
                 ),
             },
             {
@@ -159,7 +220,12 @@ def dissect_rant_to_directed_segments(
         return []
 
 
-def summarize_feedback_cycle(rant_texts: list[str], structured_snippets: list[str]) -> str:
+def summarize_feedback_cycle(
+    rant_texts: list[str],
+    structured_snippets: list[str],
+    *,
+    output_locale: str | None = None,
+) -> str:
     """
     At aggregation time: summarize all anonymized open feedback (rants) and structured
     comment snippets into one short narrative for the cycle.
@@ -182,6 +248,7 @@ def summarize_feedback_cycle(rant_texts: list[str], structured_snippets: list[st
     if len(compiled) > 12000:
         compiled = compiled[:12000] + "\n\n[Additional feedback truncated for summarization.]"
 
+    h1, h2, h3 = _cycle_summary_headings(output_locale)
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -189,11 +256,12 @@ def summarize_feedback_cycle(rant_texts: list[str], structured_snippets: list[st
                 "role": "system",
                 "content": (
                     "You are compiling anonymized feedback from a single team cycle for manager action planning. "
-                    "Write a concise and useful synthesis in 3 short sections with headings exactly: "
-                    "'What is working', 'What is not working', 'Top priorities next cycle'. "
+                    f"Write a concise and useful synthesis in 3 short sections with headings exactly: "
+                    f"'{h1}', '{h2}', '{h3}'. "
                     "Use bullet points and merge repeated ideas across messages. "
                     "Do not quote comments verbatim and do not use informal language. "
                     "Do not identify individuals."
+                    + _system_language_clause(output_locale)
                 ),
             },
             {"role": "user", "content": compiled},
@@ -208,6 +276,8 @@ def generate_cycle_actions(
     summary_text: str,
     themes: list[dict],
     receiver_summaries: list[dict],
+    *,
+    output_locale: str | None = None,
 ) -> list[dict]:
     """
     Generate suggested actions from compiled cycle data.
@@ -228,6 +298,12 @@ def generate_cycle_actions(
         for r in receiver_summaries
     ) or "No individual data available."
 
+    loc = normalize_content_locale(output_locale)
+    theme_rule = (
+        "  - theme: kurzes Schlagwort auf Deutsch (1–3 Wörter) oder null\n\n"
+        if loc == "de"
+        else "  - theme: 1-3 word lowercase English theme tag, or null\n\n"
+    )
     client = _client()
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -240,15 +316,16 @@ def generate_cycle_actions(
                     "Return ONLY a JSON object: {\"actions\": [...]} where each action has:\n"
                     "  - action_text: specific, professional, 1-2 sentence action (no generic platitudes)\n"
                     "  - scope: \"team\" or \"individual\"\n"
-                    "  - receiver_name: exact name string if individual, null if team\n"
-                    "  - theme: 1-3 word lowercase theme tag, or null\n\n"
-                    "Rules:\n"
-                    "- Generate 3-5 team-level actions targeting the highest-impact themes\n"
-                    "- Generate individual actions only for people with notably low scores (below 2.5 average) "
+                    "  - receiver_name: exact name string if individual, null if team (never translate names)\n"
+                    + theme_rule
+                    + "Rules:\n"
+                    + "- Generate 3-5 team-level actions targeting the highest-impact themes\n"
+                    + "- Generate individual actions only for people with notably low scores (below 2.5 average) "
                     "or clear patterns in the data — at most 1 per person\n"
-                    "- Individual actions must be growth-focused and constructive, never punitive\n"
-                    "- Do not quote specific feedback or make it traceable to any respondent\n"
-                    "- receiver_name must match exactly one of the names in the individual data provided"
+                    + "- Individual actions must be growth-focused and constructive, never punitive\n"
+                    + "- Do not quote specific feedback or make it traceable to any respondent\n"
+                    + "- receiver_name must match exactly one of the names in the individual data provided"
+                    + _system_language_clause(output_locale)
                 ),
             },
             {
@@ -291,6 +368,8 @@ def synthesize_structured_receiver_comments(
     improvement_comments: list[str],
     average_scores: dict[str, float],
     max_points: int = 10,
+    *,
+    output_locale: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """
     For one receiver: read all structured peer comments (helpful + improvement), merge themes,
@@ -331,6 +410,7 @@ def synthesize_structured_receiver_comments(
                     '{"helpful_key_points": ["..."], "improvement_key_points": ["..."]}.\n'
                     f"5) At most {max_points} strings per array; each string is one short bullet-level sentence.\n"
                     "6) If a section was (none) or has no usable content, use an empty array for that key."
+                    + _system_language_clause(output_locale)
                 ),
             },
             {
@@ -373,6 +453,8 @@ def reword_theme_feedback_to_key_points(
     sentiments: list[str],
     theme: str,
     max_points: int = 8,
+    *,
+    output_locale: str | None = None,
 ) -> list[str]:
     """
     Turn many anonymized feedback messages (for one theme) into a short list of reworded key points.
@@ -406,6 +488,7 @@ def reword_theme_feedback_to_key_points(
                     "(3) Order by sentiment strength: put the most critical or strongest concerns first, then neutral, then positive. "
                     "(4) Output only a JSON array of strings, each string one key point. No other text. "
                     f"Maximum {max_points} key points."
+                    + _system_language_clause(output_locale)
                 ),
             },
             {

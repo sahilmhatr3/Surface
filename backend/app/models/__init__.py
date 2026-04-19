@@ -81,6 +81,7 @@ class Rant(Base):
     anonymized_text: Mapped[str] = mapped_column(Text, nullable=False)
     theme: Mapped[str] = mapped_column(String(100), nullable=False)
     sentiment: Mapped[str] = mapped_column(String(20), nullable=False)
+    content_locale: Mapped[str | None] = mapped_column(String(5), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
@@ -112,6 +113,7 @@ class StructuredFeedback(Base):
     scores: Mapped[dict] = mapped_column(JSON, nullable=False)  # {"support": perf 1–5, "communication": impact 1–5}
     comments_helpful: Mapped[str | None] = mapped_column(Text, nullable=True)
     comments_improvement: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_locale: Mapped[str | None] = mapped_column(String(5), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 

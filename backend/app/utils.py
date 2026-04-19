@@ -29,3 +29,23 @@ def record_cycle_event(
         actor_name=actor.name if actor else None,
         note=note,
     ))
+
+
+def normalize_content_locale(locale: str | None) -> str:
+    """
+    Collapse UI / i18n codes to a supported AI output language.
+    NULL or unknown → English (matches legacy behavior).
+    """
+    if not locale:
+        return "en"
+    s = str(locale).lower().strip()
+    return "de" if s.startswith("de") else "en"
+
+
+def dominant_content_locale(locales: list[str | None]) -> str:
+    """Majority vote for cycle-level compiled text; ties → English."""
+    if not locales:
+        return "en"
+    de = sum(1 for x in locales if normalize_content_locale(x) == "de")
+    en = len(locales) - de
+    return "de" if de > en else "en"
