@@ -280,8 +280,10 @@ export default function Feedback() {
 
   // ─── handlers ───────────────────────────────────────────────────────────────
 
-  const feedbackContentLocale = (): "en" | "de" =>
-    i18n.language?.toLowerCase().startsWith("de") ? "de" : "en";
+  const feedbackContentLocale = (): "en" | "de" => {
+    const lang = (i18n.resolvedLanguage ?? i18n.language ?? "en").toLowerCase();
+    return lang.startsWith("de") ? "de" : "en";
+  };
 
   const toggleTag = (tag: string) => {
     setRantTags((prev) =>

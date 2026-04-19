@@ -355,11 +355,16 @@ export default function AdminControls() {
     setExtendEndDate("");
   };
 
+  const compileOutputLocale = (): "en" | "de" => {
+    const lang = (i18n.resolvedLanguage ?? i18n.language ?? "en").toLowerCase();
+    return lang.startsWith("de") ? "de" : "en";
+  };
+
   const handleCompileCycle = async (cycleId: number) => {
     if (!selectedTeamId) return;
     setCompileCycleSubmitting(cycleId);
     try {
-      await cyclesApi.compile(cycleId);
+      await cyclesApi.compile(cycleId, { output_locale: compileOutputLocale() });
       await adminApi.listTeamCycles(selectedTeamId).then(setCycles);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to compile cycle");

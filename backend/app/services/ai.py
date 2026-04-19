@@ -25,10 +25,14 @@ def _system_language_clause(output_locale: str | None) -> str:
     loc = normalize_content_locale(output_locale)
     if loc == "de":
         return (
-            " Ausgabesprache: Deutsch (professionell, Arbeitskontext). "
-            "Übersetze nicht ins Englische; behalte Sinn und Ton bei."
+            " KRITISCH — Ausgabesprache: ausschließlich Deutsch (professionelles Arbeitsumfeld). "
+            "Keine englischen Sätze, keine englischen Überschriften, keine Zwei-Sprachen-Mischung. "
+            "Wenn die Eingabe Englisch enthält, formuliere dennoch die Antwort vollständig auf Deutsch."
         )
-    return " Output language: clear professional English."
+    return (
+        " CRITICAL — Output language: English only (professional workplace). "
+        "No German or other languages in headings or body."
+    )
 
 
 def _cycle_summary_headings(output_locale: str | None) -> tuple[str, str, str]:
@@ -256,10 +260,12 @@ def summarize_feedback_cycle(
                 "role": "system",
                 "content": (
                     "You are compiling anonymized feedback from a single team cycle for manager action planning. "
-                    f"Write a concise and useful synthesis in 3 short sections with headings exactly: "
-                    f"'{h1}', '{h2}', '{h3}'. "
-                    "Use bullet points and merge repeated ideas across messages. "
-                    "Do not quote comments verbatim and do not use informal language. "
+                    "Write exactly three sections using markdown. Each section MUST begin with a level-2 heading "
+                    "on its own line, spelled exactly (same words and punctuation) as one of these titles, "
+                    f"with two hash characters and a space before the title: ## {h1} — then several bullet lines "
+                    "each starting with '- ' (hyphen space). "
+                    f"Second section: ## {h2} then bullets. Third section: ## {h3} then bullets. "
+                    "Merge repeated ideas across messages. Do not quote comments verbatim; stay professional. "
                     "Do not identify individuals."
                     + _system_language_clause(output_locale)
                 ),

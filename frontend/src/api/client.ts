@@ -184,17 +184,25 @@ export const cyclesApi = {
       { method: "PATCH", body: JSON.stringify(body) }
     ),
 
-  compile: (cycleId: number) =>
-    request<import("./types").CycleResponse>(
-      `/cycles/${cycleId}/compile`,
-      { method: "POST" }
-    ),
+  compile: (cycleId: number, opts?: { output_locale?: string | null }) => {
+    const q =
+      opts?.output_locale != null && opts.output_locale !== ""
+        ? `?output_locale=${encodeURIComponent(opts.output_locale)}`
+        : "";
+    return request<import("./types").CycleResponse>(`/cycles/${cycleId}/compile${q}`, {
+      method: "POST",
+    });
+  },
 
-  aggregate: (cycleId: number) =>
-    request<import("./types").CycleResponse>(
-      `/cycles/${cycleId}/aggregate`,
-      { method: "POST" }
-    ),
+  aggregate: (cycleId: number, opts?: { output_locale?: string | null }) => {
+    const q =
+      opts?.output_locale != null && opts.output_locale !== ""
+        ? `?output_locale=${encodeURIComponent(opts.output_locale)}`
+        : "";
+    return request<import("./types").CycleResponse>(`/cycles/${cycleId}/aggregate${q}`, {
+      method: "POST",
+    });
+  },
 
   getManagerReview: (cycleId: number) =>
     request<import("./types").ManagerReviewResponse>(`/cycles/${cycleId}/manager-review`),

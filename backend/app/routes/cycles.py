@@ -4,7 +4,7 @@ All require auth; some require manager of the cycle's team.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -27,7 +27,7 @@ from app.schemas.cycles import (
 )
 from app.schemas.admin import CycleResponse
 from app.core.security import get_current_user
-from app.utils import record_cycle_event
+from app.utils import normalize_content_locale, record_cycle_event
 
 router = APIRouter()
 
@@ -468,6 +468,11 @@ def update_action(
 def compile_cycle(
     cycle_id: int,
     background_tasks: BackgroundTasks,
+    output_locale: str | None = Query(
+        None,
+        max_length=10,
+        description="Force AI output language for this compile: en or de (overrides majority from submissions).",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -488,8 +493,13 @@ def compile_cycle(
         )
     # Determine if this is a recompile (already has compiled data) before running aggregation
     is_recompile = cycle.status in ("compiled", "published")
+    loc_override = (
+        normalize_content_locale(output_locale)
+        if output_locale is not None and str(output_locale).strip()
+        else None
+    )
     try:
-        run_aggregation(db, cycle_id, force=is_admin)
+        run_aggregation(db, cycle_id, force=is_admin, output_locale=loc_override)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     # Record the event (run_aggregation commits, so we need a fresh record + commit)
@@ -506,11 +516,18 @@ def compile_cycle(
 def aggregate_cycle_legacy(
     cycle_id: int,
     background_tasks: BackgroundTasks,
+    output_locale: str | None = Query(None, max_length=10),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Backward-compatible alias for /compile."""
-    return compile_cycle(cycle_id=cycle_id, background_tasks=background_tasks, db=db, current_user=current_user)
+    return compile_cycle(
+        cycle_id=cycle_id,
+        background_tasks=background_tasks,
+        output_locale=output_locale,
+        db=db,
+        current_user=current_user,
+    )
 
 
 @router.get("/{cycle_id}/manager-review", response_model=ManagerReviewResponse)

@@ -112,7 +112,19 @@ function EyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => vo
   );
 }
 
-/** Parse the AI compiled brief markdown (## headers + - bullets) into sections. */
+/** Heuristic for card tint: first section ≈ strengths, second ≈ gaps, third ≈ priorities. */
+function briefSectionPrefix(heading: string): string {
+  const h = heading.toLowerCase();
+  if (h.includes("working") && !h.includes("not")) return "positive";
+  if (h.includes("not") && h.includes("working")) return "negative";
+  if (h.includes("priorit")) return "neutral";
+  if (h.includes("funktioniert") && h.includes("gut") && !h.includes("nicht")) return "positive";
+  if (h.includes("nicht") && h.includes("funktioniert")) return "negative";
+  if (h.includes("priorität") || h.includes("priorit")) return "neutral";
+  return "neutral";
+}
+
+/** Parse the AI compiled brief markdown (## headers + - or * bullets) into sections. */
 function parseBrief(text: string) {
   const sections: Array<{ heading: string; bullets: string[]; prefix: string }> = [];
   let current: { heading: string; bullets: string[]; prefix: string } | null = null;
@@ -121,15 +133,9 @@ function parseBrief(text: string) {
     if (t.startsWith("## ")) {
       if (current) sections.push(current);
       const heading = t.replace(/^##\s+/, "");
-      const prefix =
-        heading.toLowerCase().includes("working") && !heading.toLowerCase().includes("not")
-          ? "positive"
-          : heading.toLowerCase().includes("not")
-          ? "negative"
-          : "neutral";
-      current = { heading, bullets: [], prefix };
-    } else if (t.startsWith("- ") && current) {
-      current.bullets.push(t.replace(/^-\s+/, ""));
+      current = { heading, bullets: [], prefix: briefSectionPrefix(heading) };
+    } else if ((t.startsWith("- ") || t.startsWith("* ")) && current) {
+      current.bullets.push(t.replace(/^[-*]\s+/, ""));
     }
   }
   if (current) sections.push(current);
@@ -147,6 +153,45 @@ const SECTION_HEADING_COLORS: Record<string, string> = {
   negative: "text-rose-400/70",
   neutral:  "text-surface-text-muted",
 };
+
+/** Renders parsed ## / bullet sections, or plain text if the model used a different shape. */
+function BriefSummaryGrid({ summaryText }: { summaryText: string }) {
+  const parsed = parseBrief(summaryText);
+  if (parsed.length === 0) {
+    return (
+      <div className="rounded-xl border border-surface-pill-border p-4 bg-white/[0.02]">
+        <p className="text-sm text-surface-text whitespace-pre-wrap">{summaryText}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      {parsed.map((sec, si) => (
+        <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
+          <p
+            className={`text-xs font-semibold uppercase tracking-wider mb-2 ${
+              SECTION_HEADING_COLORS[sec.prefix] ?? SECTION_HEADING_COLORS.neutral
+            }`}
+          >
+            {sec.heading}
+          </p>
+          <ul className="space-y-1.5">
+            {sec.bullets.map((b, bi) => (
+              <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
+                <span
+                  className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${
+                    SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"
+                  }`}
+                />
+                {b}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ---------- Action row component ----------
 
@@ -729,21 +774,7 @@ export default function Insights() {
                   {summary?.summary_text && (
                     <div>
                       <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.cycleSummary")}</h3>
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        {parseBrief(summary.summary_text).map((sec, si) => (
-                          <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
-                            <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${SECTION_HEADING_COLORS[sec.prefix] ?? SECTION_HEADING_COLORS.neutral}`}>{sec.heading}</p>
-                            <ul className="space-y-1.5">
-                              {sec.bullets.map((b, bi) => (
-                                <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
-                                  <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
-                                  {b}
-                          </li>
-                        ))}
-                      </ul>
-                          </div>
-                        ))}
-                      </div>
+                      <BriefSummaryGrid summaryText={summary.summary_text} />
                     </div>
                   )}
                   {previewTeamActions.length > 0 && (
@@ -811,23 +842,7 @@ export default function Insights() {
                         {review.summary_text && (
                           <div>
                             <h3 className="text-sm font-semibold text-surface-text-strong uppercase tracking-wider mb-4">{t("insights.compiledBrief")}</h3>
-                            <div className="grid sm:grid-cols-2 gap-3">
-                              {parseBrief(review.summary_text).map((sec, si) => (
-                                <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
-                                  <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${SECTION_HEADING_COLORS[sec.prefix] ?? SECTION_HEADING_COLORS.neutral}`}>
-                                    {sec.heading}
-                                  </p>
-                                  <ul className="space-y-1.5">
-                                    {sec.bullets.map((b, bi) => (
-                                      <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
-                                        <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
-                                        {b}
-                  </li>
-                ))}
-              </ul>
-                                </div>
-                              ))}
-                            </div>
+                            <BriefSummaryGrid summaryText={review.summary_text} />
                           </div>
                         )}
 
@@ -1223,25 +1238,9 @@ export default function Insights() {
               {summary?.summary_text && (
                 <div>
                   <h2 className="text-base font-semibold text-surface-text-strong mb-3">{t("insights.cycleSummary")}</h2>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {parseBrief(summary.summary_text).map((sec, si) => (
-                      <div key={si} className={`rounded-xl border p-4 ${SECTION_COLORS[sec.prefix] ?? SECTION_COLORS.neutral}`}>
-                        <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${SECTION_HEADING_COLORS[sec.prefix] ?? SECTION_HEADING_COLORS.neutral}`}>
-                          {sec.heading}
-                        </p>
-                        <ul className="space-y-1.5">
-                          {sec.bullets.map((b, bi) => (
-                            <li key={bi} className="flex items-start gap-2 text-sm text-surface-text">
-                              <span className={`mt-1.5 w-1 h-1 rounded-full shrink-0 ${SECTION_HEADING_COLORS[sec.prefix]?.replace("text-", "bg-") ?? "bg-surface-text-muted"}`} />
-                              {b}
-                  </li>
-                ))}
-              </ul>
-                      </div>
-                    ))}
-                  </div>
-            </div>
-          )}
+                  <BriefSummaryGrid summaryText={summary.summary_text} />
+                </div>
+              )}
 
               {summary && summary.actions.length > 0 && (
                 <div>

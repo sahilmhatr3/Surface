@@ -92,7 +92,12 @@ def wipe_raw_data_for_cycle(db: Session, cycle_id: int) -> None:
     db.commit()
 
 
-def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
+def run_aggregation(
+    db: Session,
+    cycle_id: int,
+    force: bool = False,
+    output_locale: str | None = None,
+) -> None:
     """
     Compile raw feedback into insights, receiver summaries, and an AI summary.
     - Build cycle_insights from rants (group by theme).
@@ -123,9 +128,22 @@ def run_aggregation(db: Session, cycle_id: int, force: bool = False) -> None:
     rants = db.query(Rant).filter(Rant.cycle_id == cycle_id).all()
     structured = db.query(StructuredFeedback).filter(StructuredFeedback.cycle_id == cycle_id).all()
 
-    compile_locale = dominant_content_locale(
+    derived_locale = dominant_content_locale(
         [r.content_locale for r in rants] + [s.content_locale for s in structured]
     )
+    any_stored_locale = any(r.content_locale is not None for r in rants) or any(
+        s.content_locale is not None for s in structured
+    )
+    # If submitters stored a locale, trust majority. If all rows are legacy (NULL), use the
+    # compiler's output_locale hint (e.g. admin UI language) so German demos still compile in German.
+    if (
+        output_locale is not None
+        and str(output_locale).strip()
+        and not any_stored_locale
+    ):
+        compile_locale = normalize_content_locale(output_locale)
+    else:
+        compile_locale = derived_locale
 
     # Participation: distinct submitters
     participation_rants = len({r.user_id for r in rants})
