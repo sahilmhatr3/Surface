@@ -10,6 +10,7 @@ import { supabase } from "../lib/supabase";
 import { isPasswordRecoverySession } from "../lib/supabaseSession";
 import { authApi, ApiError } from "../api/client";
 import type { UserResponse } from "../api/types";
+import i18n from "../i18n/config";
 
 type ProfileRefreshError = "no_app_profile" | "profile_fetch_failed";
 
@@ -28,6 +29,8 @@ interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<RefreshUserResult>;
+  /** Persist UI language for the signed-in user and apply it in i18n. */
+  updateMyLocale: (locale: "en" | "de") => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -72,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const profile = await authApi.me();
       setUser(profile);
       setError(null);
+      const loc = profile.locale === "de" ? "de" : "en";
+      void i18n.changeLanguage(loc);
       return { profile };
     } catch (e) {
       setUser(null);
@@ -144,6 +149,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
   }, []);
 
+  const updateMyLocale = useCallback(async (locale: "en" | "de") => {
+    const updated = await authApi.patchMe({ locale });
+    setUser(updated);
+    setError(null);
+    await i18n.changeLanguage(locale);
+  }, []);
+
   const value: AuthContextValue = {
     user,
     loading,
@@ -151,6 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     refreshUser,
+    updateMyLocale,
   };
 
   return (

@@ -1,4 +1,8 @@
 {
+  "password": {
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
+  },
   "lang": {
     "switcherAria": "Change language",
     "english": "English",
@@ -9,6 +13,7 @@
     "feedback": "Feedback",
     "admin": "Admin",
     "teams": "Teams",
+    "settings": "Settings",
     "login": "Log in",
     "logout": "Log out",
     "openMenu": "Open menu",
@@ -269,7 +274,17 @@
       "usersList": "Users",
       "teams": "Teams"
     },
-    "createUsersHelp": "Supabase emails each new user an invite link to set their password. Match your deployed URL in backend APP_PUBLIC_URL and in Supabase → Authentication → URL configuration (redirects for /auth/callback). For employees, select a manager first — the team will auto-fill from theirs."
+    "createUsersHelp": "Supabase emails each new user an invite link to set their password. Match your deployed URL in backend APP_PUBLIC_URL and in Supabase → Authentication → URL configuration (redirects for /auth/callback). For employees, select a manager first — the team will auto-fill from theirs.",
+    "createUsersLanguageHint": "Choose their app language for the invite — they can change it later in Settings.",
+    "inviteLanguageShort": "Lang",
+    "inviteLanguageHelp": "Language the app uses when they first sign in (default English)."
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Preferences for your Surface account.",
+    "languageTitle": "Language",
+    "languageHelp": "This applies across the app on every device when you are signed in.",
+    "saveFailed": "Could not save your preference. Try again."
   },
   "insights": {
     "themes": "Themes",

@@ -19,6 +19,8 @@ interface CreateUserRow {
   role: "employee" | "manager" | "admin";
   team_id: number | null;
   manager_id: number | null;
+  /** Default app language when they first sign in */
+  locale: "en" | "de";
 }
 import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
@@ -242,6 +244,7 @@ export default function AdminControls() {
         role: r.role,
         team_id: r.team_id ?? undefined,
         manager_id: r.manager_id ?? undefined,
+        locale: r.locale,
       }));
       const res = await adminApi.importUsers({ users: payload });
       setCreateResult(
@@ -267,6 +270,7 @@ export default function AdminControls() {
         role: "employee",
         team_id: null,
         manager_id: null,
+        locale: "en",
       },
     ]);
   };
@@ -516,6 +520,7 @@ export default function AdminControls() {
                               <th className="pb-2 pr-3">Name</th>
                               <th className="pb-2 pr-3">Email</th>
                               <th className="pb-2 pr-3">Role</th>
+                              <th className="pb-2 pr-3">{t("admin.inviteLanguageShort")}</th>
                               <th className="pb-2 pr-3">Team</th>
                               <th className="pb-2">Password</th>
                             </tr>
@@ -527,6 +532,9 @@ export default function AdminControls() {
                                 <td className="py-2 pr-3">{u.name}</td>
                                 <td className="py-2 pr-3">{u.email}</td>
                                 <td className="py-2 pr-3 capitalize">{u.role}</td>
+                                <td className="py-2 pr-3 uppercase text-xs text-surface-text-muted">
+                                  {u.locale === "de" ? "de" : "en"}
+                                </td>
                                 <td className="py-2 pr-3">{teamName(u.team_id)}</td>
                                 <td className="py-2">
                                   <span className="text-xs text-surface-text-muted/60">—</span>
@@ -655,7 +663,9 @@ export default function AdminControls() {
                   <h2 className="text-lg font-semibold text-surface-text-strong mb-1">
                     {t("admin.tabs.createUsers")}
                   </h2>
-                  <p className="text-surface-text-muted text-sm mb-5">{t("admin.createUsersHelp")}</p>
+                  <p className="text-surface-text-muted text-sm mb-5">
+                    {t("admin.createUsersHelp")} {t("admin.createUsersLanguageHint")}
+                  </p>
                   {createResult && (
                     <p className="text-sm text-surface-text-muted mb-3">{createResult}</p>
                   )}
@@ -663,7 +673,7 @@ export default function AdminControls() {
                     {createRows.map((row, i) => (
                       <div key={i} className="rounded-xl border border-surface-pill-border/60 bg-white/[0.02] p-4 space-y-3">
                         {/* Role selector + remove */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <label className="text-xs text-surface-text-muted w-10 shrink-0">Role</label>
                           <select
                             value={row.role}
@@ -673,6 +683,18 @@ export default function AdminControls() {
                             <option value="employee">Employee</option>
                             <option value="manager">Manager</option>
                             <option value="admin">Admin</option>
+                          </select>
+                          <label className="text-xs text-surface-text-muted shrink-0">{t("admin.inviteLanguageShort")}</label>
+                          <select
+                            value={row.locale}
+                            onChange={(e) =>
+                              updateCreateRow(i, "locale", e.target.value as CreateUserRow["locale"])
+                            }
+                            className={`${inputClass} w-36 text-sm`}
+                            title={t("admin.inviteLanguageHelp")}
+                          >
+                            <option value="en">{t("lang.english")}</option>
+                            <option value="de">{t("lang.german")}</option>
                           </select>
                           <span className="flex-1" />
                           <button

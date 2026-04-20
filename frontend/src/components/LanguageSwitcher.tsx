@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "../hooks/useAuth";
 
 const LOCALES = [
   { code: "en", flag: "🇬🇧", labelKey: "lang.english" as const },
@@ -8,6 +9,7 @@ const LOCALES = [
 
 export default function LanguageSwitcher() {
   const { i18n, t } = useTranslation();
+  const { user, updateMyLocale } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -61,8 +63,12 @@ export default function LanguageSwitcher() {
                     : "text-surface-text-muted hover:bg-white/5 hover:text-surface-text"
                 }`}
                 onClick={() => {
-                  void i18n.changeLanguage(loc.code);
                   setOpen(false);
+                  if (user) {
+                    void updateMyLocale(loc.code as "en" | "de");
+                  } else {
+                    void i18n.changeLanguage(loc.code);
+                  }
                 }}
               >
                 <span className="text-base leading-none" aria-hidden>

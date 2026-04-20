@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useAuth } from "../hooks/useAuth";
 import LoadingSpinner from "../components/LoadingSpinner";
+import PasswordInput from "../components/PasswordInput";
 
 const pillInput =
   "w-full px-4 py-3 rounded-full bg-white/5 border border-surface-pill-border text-surface-text placeholder-surface-text-muted focus:outline-none focus:border-surface-accent-cyan/50 focus:ring-1 focus:ring-surface-accent-cyan/30 transition-all";
@@ -79,8 +80,7 @@ export default function Login() {
             required
             autoComplete="email"
           />
-          <input
-            type="password"
+          <PasswordInput
             placeholder={t("login.password")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}

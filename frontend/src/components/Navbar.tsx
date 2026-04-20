@@ -151,6 +151,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
     <>
       {navLink("/dashboard", t("nav.dashboard"))}
       {navLink("/feedback", t("nav.feedback"))}
+      {navLink("/settings", t("nav.settings"))}
       {user.role === "admin" && (
         <>
           <span className="w-px h-3.5 bg-white/10 mx-1 shrink-0" aria-hidden />
@@ -315,6 +316,7 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
               {[
                 { to: "/dashboard", label: t("nav.dashboard") },
                 { to: "/feedback", label: t("nav.feedback") },
+                { to: "/settings", label: t("nav.settings") },
                 ...(user.role === "admin"
                   ? [
                       { to: "/admin-controls", label: t("nav.admin") },

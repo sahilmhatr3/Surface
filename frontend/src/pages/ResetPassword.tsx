@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { supabase } from "../lib/supabase";
 import { isPasswordRecoverySession } from "../lib/supabaseSession";
 import { clearRecoveryMode } from "../hooks/useAuth";
+import PasswordInput from "../components/PasswordInput";
 
 const pillInput =
   "w-full px-4 py-3 rounded-full bg-white/5 border border-surface-pill-border text-surface-text placeholder-surface-text-muted focus:outline-none focus:border-surface-accent-cyan/50 focus:ring-1 focus:ring-surface-accent-cyan/30 transition-all";
@@ -184,8 +185,7 @@ export default function ResetPassword() {
           {flowInvite ? t("resetPassword.titleInvite") : t("resetPassword.title")}
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="password"
+          <PasswordInput
             placeholder={t("resetPassword.newPassword")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -194,8 +194,7 @@ export default function ResetPassword() {
             minLength={8}
             required
           />
-          <input
-            type="password"
+          <PasswordInput
             placeholder={t("resetPassword.confirmPassword")}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}

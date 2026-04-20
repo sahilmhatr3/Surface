@@ -15,6 +15,7 @@ import Insights from "./pages/Insights";
 import IncomingFeedback from "./pages/IncomingFeedback";
 import AdminControls from "./pages/AdminControls";
 import Feedback from "./pages/Feedback";
+import Settings from "./pages/Settings";
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
           <Route path="admin-controls" element={<AdminControls />} />
           <Route path="teams" element={<Teams />} />
           <Route path="insights" element={<Insights />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </AuthProvider>

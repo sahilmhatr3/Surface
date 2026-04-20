@@ -11,6 +11,8 @@ export interface UserResponse {
   role: string;
   team_id: number | null;
   manager_id: number | null;
+  /** UI language: en | de */
+  locale: string;
 }
 
 export interface Token {
@@ -46,6 +48,12 @@ export interface UserImportRow {
   team_id?: number | null;
   team_name?: string | null;
   manager_id?: number | null;
+  /** Invite default UI language */
+  locale?: "en" | "de" | null;
+}
+
+export interface UserLocaleUpdate {
+  locale: "en" | "de";
 }
 
 export interface UsersImportRequest {

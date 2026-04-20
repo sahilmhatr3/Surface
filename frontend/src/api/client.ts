@@ -102,6 +102,13 @@ export async function submitContactPilot(body: ContactPilotPayload): Promise<voi
 export const authApi = {
   /** Fetch the app-level profile for the current Supabase session. */
   me: () => request<import("./types").UserResponse>("/auth/me"),
+
+  /** Update editable profile fields (e.g. UI language). */
+  patchMe: (body: import("./types").UserLocaleUpdate) =>
+    request<import("./types").UserResponse>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };
 
 // ---- Admin (require admin role) ----

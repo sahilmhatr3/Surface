@@ -1,4 +1,8 @@
 {
+  "password": {
+    "showPassword": "Passwort anzeigen",
+    "hidePassword": "Passwort verbergen"
+  },
   "lang": {
     "switcherAria": "Sprache ändern",
     "english": "English",
@@ -9,6 +13,7 @@
     "feedback": "Feedback",
     "admin": "Administration",
     "teams": "Teams",
+    "settings": "Einstellungen",
     "login": "Anmelden",
     "logout": "Abmelden",
     "openMenu": "Menü öffnen",
@@ -269,7 +274,17 @@
       "usersList": "Benutzer",
       "teams": "Teams"
     },
-    "createUsersHelp": "Supabase sendet jeder neuen Person eine Einladungs-E-Mail zum Passwort-Setzen. Tragen Sie die öffentliche App-URL in APP_PUBLIC_URL (Backend) und unter Authentifizierung → URL-Konfiguration in Supabase ein (Weiterleitungen für /auth/callback). Bei Mitarbeitenden wählen Sie zuerst eine Führungskraft — das Team wird automatisch von deren Team übernommen."
+    "createUsersHelp": "Supabase sendet jeder neuen Person eine Einladungs-E-Mail zum Passwort-Setzen. Tragen Sie die öffentliche App-URL in APP_PUBLIC_URL (Backend) und unter Authentifizierung → URL-Konfiguration in Supabase ein (Weiterleitungen für /auth/callback). Bei Mitarbeitenden wählen Sie zuerst eine Führungskraft — das Team wird automatisch von deren Team übernommen.",
+    "createUsersLanguageHint": "Wählen Sie die App-Sprache für die Einladung — später änderbar unter Einstellungen.",
+    "inviteLanguageShort": "Spr.",
+    "inviteLanguageHelp": "Sprache der App beim ersten Anmelden (Standard: Englisch)."
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "subtitle": "Einstellungen für Ihr Surface-Konto.",
+    "languageTitle": "Sprache",
+    "languageHelp": "Gilt in der gesamten App auf allen Geräten, wenn Sie angemeldet sind.",
+    "saveFailed": "Einstellung konnte nicht gespeichert werden. Bitte erneut versuchen."
   },
   "insights": {
     "themes": "Themen",
