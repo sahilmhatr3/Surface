@@ -43,8 +43,15 @@ class UserResponse(BaseModel):
     role: str
     team_id: int | None
     manager_id: int | None
+    locale: str = "en"
 
     model_config = {"from_attributes": True}
+
+
+class UserLocaleUpdate(BaseModel):
+    """PATCH /auth/me — update stored UI language."""
+
+    locale: str = Field(..., pattern="^(en|de)$")
 
 
 class ChangePasswordRequest(BaseModel):

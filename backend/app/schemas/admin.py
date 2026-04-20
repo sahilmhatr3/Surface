@@ -15,6 +15,11 @@ class UserImportRow(BaseModel):
     team_id: int | None = Field(None, description="Existing team ID; if set, team_name is ignored.")
     team_name: str | None = Field(None, min_length=1, max_length=255, description="Team name for get-or-create when team_id is not set.")
     manager_id: int | None = Field(None, description="Manager's user ID; required for employees.")
+    locale: str | None = Field(
+        None,
+        description="UI language for invitee (en or de). Defaults to en when omitted.",
+        pattern="^(en|de)$",
+    )
 
     @model_validator(mode="after")
     def require_team(self):

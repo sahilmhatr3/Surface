@@ -262,6 +262,7 @@ def import_users(body: UsersImportRequest, db: Session = Depends(get_db)):
             team_id=team.id,
             manager_id=manager_id,
             supabase_id=supabase_uid,
+            locale=row.locale or "en",
         )
         db.add(user)
         users_created += 1
