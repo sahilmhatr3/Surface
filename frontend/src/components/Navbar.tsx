@@ -77,8 +77,10 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [hasOpenCycle, setHasOpenCycle] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const userPopoverRef = useRef<HTMLDivElement>(null);
 
   // Check for open cycles to show the indicator dot
   useEffect(() => {
@@ -96,10 +98,13 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Close menu on navigation
-  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+  // Close menus on navigation
+  useEffect(() => {
+    setMenuOpen(false);
+    setUserMenuOpen(false);
+  }, [location.pathname]);
 
-  // Close menu on outside click
+  // Close hamburger menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
     const handler = (e: MouseEvent) => {
@@ -110,6 +115,18 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
+
+  // Close user account popover on outside click
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (userPopoverRef.current && !userPopoverRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [userMenuOpen]);
 
   // Treat /feedback, /incoming-feedback, and /insights as the same top-level section
   const FEEDBACK_PATHS = ["/feedback", "/incoming-feedback", "/insights"];
@@ -151,7 +168,6 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
     <>
       {navLink("/dashboard", t("nav.dashboard"))}
       {navLink("/feedback", t("nav.feedback"))}
-      {navLink("/settings", t("nav.settings"))}
       {user.role === "admin" && (
         <>
           <span className="w-px h-3.5 bg-white/10 mx-1 shrink-0" aria-hidden />
@@ -220,19 +236,28 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
           <span className="text-[14px]">{productName}</span>
         </Link>
 
-        {/* RIGHT */}
-        <div className="flex items-center gap-1.5">
+        {/* RIGHT — language + user (popover ref for outside-click) */}
+        <div ref={userPopoverRef} className="relative flex items-center gap-1.5">
           <LanguageSwitcher />
           {user ? (
             <>
-              {/* Full user chip — visible when NOT scrolled */}
-              <div
+              {/* Full user chip — visible when NOT scrolled; opens account menu */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setUserMenuOpen((o) => !o);
+                }}
+                aria-expanded={userMenuOpen}
+                aria-haspopup="menu"
+                aria-label={t("nav.accountMenu")}
                 className={[
                   "flex items-center gap-2 rounded-full border border-white/[0.07] bg-white/[0.04] backdrop-blur-2xl px-2.5 py-1.5",
-                  "transition-all duration-300",
+                  "transition-all duration-300 text-left hover:bg-white/[0.07] hover:border-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-accent-cyan/40",
                   scrolled ? "opacity-0 pointer-events-none w-0 overflow-hidden px-0 border-transparent" : "opacity-100",
                 ].join(" ")}
                 aria-hidden={scrolled}
+                tabIndex={scrolled ? -1 : 0}
               >
                 <span className="w-5 h-5 rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0 select-none">
                   {initials(user.name)}
@@ -241,12 +266,15 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium capitalize hidden sm:inline whitespace-nowrap ${ROLE_COLORS[user.role] ?? ROLE_COLORS.employee}`}>
                   {t(`common.roles.${user.role}`, { defaultValue: user.role })}
                 </span>
-              </div>
+              </button>
 
               {/* Logout icon — visible when NOT scrolled */}
               <button
                 type="button"
-                onClick={logout}
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  void logout();
+                }}
                 title={t("nav.logout")}
                 className={[
                   "p-1.5 rounded-full text-surface-text-muted/40 hover:text-surface-text-muted hover:bg-white/5 transition-all duration-300",
@@ -258,22 +286,34 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
                 {LOGOUT_ICON}
               </button>
 
-              {/* Avatar — always visible (gives visual anchor when scrolled) */}
-              <span
+              {/* Avatar — visible when scrolled; opens same account menu */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setUserMenuOpen((o) => !o);
+                }}
+                aria-expanded={userMenuOpen}
+                aria-haspopup="menu"
+                title={user.name}
+                aria-label={t("nav.accountMenu")}
                 className={[
                   "w-7 h-7 rounded-full bg-gradient-to-br from-violet-400 to-fuchsia-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0 select-none transition-all duration-300",
-                  scrolled ? "opacity-100 scale-100" : "opacity-0 scale-75 w-0 overflow-hidden",
+                  "hover:ring-2 hover:ring-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-accent-cyan/50",
+                  scrolled ? "opacity-100 scale-100" : "opacity-0 scale-75 w-0 overflow-hidden pointer-events-none",
                 ].join(" ")}
-                title={user.name}
-                aria-hidden={!scrolled}
+                tabIndex={scrolled ? 0 : -1}
               >
                 {initials(user.name)}
-              </span>
+              </button>
 
               {/* Hamburger — visible when scrolled */}
               <button
                 type="button"
-                onClick={() => setMenuOpen((v) => !v)}
+                onClick={() => {
+                  setUserMenuOpen(false);
+                  setMenuOpen((v) => !v);
+                }}
                 aria-label={menuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
                 aria-expanded={menuOpen}
                 className={[
@@ -287,6 +327,28 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
               >
                 <HamburgerIcon open={menuOpen} />
               </button>
+
+              {/* Account menu (Settings) — anchored top-right */}
+              {userMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-2 min-w-[11rem] py-1 rounded-xl border border-white/[0.08] bg-[var(--color-surface-bg,#0a0a0f)]/98 backdrop-blur-xl shadow-lg z-[60]"
+                >
+                  <Link
+                    role="menuitem"
+                    to="/settings"
+                    onClick={() => setUserMenuOpen(false)}
+                    className={[
+                      "block px-3 py-2.5 text-sm transition-colors",
+                      isActive("/settings")
+                        ? "bg-white/10 text-surface-text-strong font-medium"
+                        : "text-surface-text-muted hover:text-surface-text hover:bg-white/5",
+                    ].join(" ")}
+                  >
+                    {t("nav.settings")}
+                  </Link>
+                </div>
+              )}
             </>
           ) : (
             <Link
@@ -316,7 +378,6 @@ export default function Navbar({ productName = "Surface" }: NavbarProps) {
               {[
                 { to: "/dashboard", label: t("nav.dashboard") },
                 { to: "/feedback", label: t("nav.feedback") },
-                { to: "/settings", label: t("nav.settings") },
                 ...(user.role === "admin"
                   ? [
                       { to: "/admin-controls", label: t("nav.admin") },
