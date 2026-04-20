@@ -593,6 +593,7 @@ export default function Insights() {
     try {
       await cyclesApi.publishTeam(cycleId);
       await refreshAfterPublish();
+      navigate(`/insights?cycle=${cycleId}&tab=review`, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : t("insights.failedPublishTeam"));
     } finally {
@@ -608,6 +609,7 @@ export default function Insights() {
     try {
       await cyclesApi.publishIndividuals(cycleId);
       await refreshAfterPublish();
+      navigate(`/insights?cycle=${cycleId}&tab=review`, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : t("insights.failedPublishIndividual"));
     } finally {
@@ -902,14 +904,19 @@ export default function Insights() {
                             <button
                               type="button"
                               onClick={publishTeam}
-                              disabled={publishingTeam || review.team_published}
+                              disabled={
+                                publishingTeam ||
+                                (review.team_published === true && review.team_publication_outdated !== true)
+                              }
                               className="px-5 py-2 rounded-full text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-all"
                             >
                               {publishingTeam
                                 ? t("insights.publishing")
-                                : review.team_published
+                                : review.team_published === true && review.team_publication_outdated !== true
                                   ? t("insights.teamPublished")
-                                  : t("insights.publishTeamInsights")}
+                                  : review.team_published === true && review.team_publication_outdated === true
+                                    ? t("insights.republishTeamInsights")
+                                    : t("insights.publishTeamInsights")}
                             </button>
                           </div>
                         </div>
@@ -1040,14 +1047,22 @@ export default function Insights() {
                             <button
                               type="button"
                               onClick={publishIndividuals}
-                              disabled={publishingIndividuals || review.individuals_published}
+                              disabled={
+                                publishingIndividuals ||
+                                (review.individuals_published === true &&
+                                  review.individual_publication_outdated !== true)
+                              }
                               className="px-5 py-2 rounded-full text-sm font-semibold border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 disabled:opacity-40 transition-all"
                             >
                               {publishingIndividuals
                                 ? t("insights.publishing")
-                                : review.individuals_published
+                                : review.individuals_published === true &&
+                                    review.individual_publication_outdated !== true
                                   ? t("insights.individualPublished")
-                                  : t("insights.publishIndividualFeedback")}
+                                  : review.individuals_published === true &&
+                                      review.individual_publication_outdated === true
+                                    ? t("insights.republishIndividualFeedback")
+                                    : t("insights.publishIndividualFeedback")}
                             </button>
                           </div>
                         </div>

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db import get_db
 from app.models import Action, CycleEvent, CycleInsight, CycleReceiverSummary, FeedbackCycle, RantDirectedSegment, User
 from app.services.aggregation import cleanup_expired_raw_data, run_aggregation
+from app.services import published_display as pubdisp
 from app.schemas.cycles import (
     ActionCreate,
     ActionResponse,
@@ -203,6 +204,20 @@ def get_themes(
             participation_structured=part_struct,
             themes=[],
         )
+    if (
+        not manager_view
+        and cycle.team_published
+        and cycle.team_publication_outdated
+        and cycle.team_public_snapshot
+    ):
+        snap = cycle.team_public_snapshot
+        themes_data = snap.get("themes") or []
+        return ThemesResponse(
+            cycle_id=cycle_id,
+            participation_rants=part_rants,
+            participation_structured=part_struct,
+            themes=[ThemeItem.model_validate(x) for x in themes_data],
+        )
     insights = db.query(CycleInsight).filter(CycleInsight.cycle_id == cycle_id).all()
     threshold = settings.ANONYMITY_THRESHOLD
     themes = []
@@ -297,6 +312,16 @@ def get_incoming_feedback(
 
     structured: ManagerSummaryResponse | None = None
     manager_view = _is_cycle_manager(cycle, current_user, db)
+    if (
+        not manager_view
+        and cycle.individuals_published
+        and cycle.individual_publication_outdated
+        and cycle.individual_public_snapshot
+    ):
+        by = (cycle.individual_public_snapshot or {}).get("by_receiver") or {}
+        payload = by.get(str(current_user.id)) or by.get(current_user.id)
+        if payload:
+            return IncomingFeedbackResponse.model_validate(payload)
     # Employees only see individual feedback after individuals_published is set
     can_view = (cycle.status in ("compiled", "published") and cycle.individuals_published) or manager_view
     if cycle.status in ("compiled", "published") and can_view:
@@ -589,6 +614,8 @@ def get_manager_review(
         status=cycle.status,
         team_published=cycle.team_published,
         individuals_published=cycle.individuals_published,
+        team_publication_outdated=cycle.team_publication_outdated,
+        individual_publication_outdated=cycle.individual_publication_outdated,
         participation_rants=part_rants,
         participation_structured=part_struct,
         summary_text=cycle.summary_text,
@@ -621,6 +648,10 @@ def update_manager_review(
     _require_cycle_manager(cycle, current_user, db)
     if cycle.status not in ("compiled", "published"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cycle not yet compiled")
+    if cycle.team_published and cycle.team_public_snapshot is None:
+        cycle.team_public_snapshot = pubdisp.employee_team_summary(db, cycle).model_dump(mode="json")
+    if cycle.individuals_published and cycle.individual_public_snapshot is None:
+        cycle.individual_public_snapshot = pubdisp.all_individual_snapshots(db, cycle)
     hidden_theme_ids = set(body.hidden_theme_ids)
     hidden_receiver_ids = set(body.hidden_receiver_summary_ids)
     insights = db.query(CycleInsight).filter(CycleInsight.cycle_id == cycle_id).all()
@@ -651,6 +682,19 @@ def update_manager_review(
             new_text = body.action_updates[a.id].strip()
             if new_text:
                 a.action_text = new_text[:2000]
+    db.flush()
+    if cycle.team_published:
+        live_team = pubdisp.employee_team_summary(db, cycle).model_dump(mode="json")
+        if cycle.team_public_snapshot is None:
+            cycle.team_public_snapshot = live_team
+        elif not pubdisp.json_snapshot_equal(cycle.team_public_snapshot, live_team):
+            cycle.team_publication_outdated = True
+    if cycle.individuals_published:
+        live_ind = pubdisp.all_individual_snapshots(db, cycle)
+        if cycle.individual_public_snapshot is None:
+            cycle.individual_public_snapshot = live_ind
+        elif not pubdisp.json_snapshot_equal(cycle.individual_public_snapshot, live_ind):
+            cycle.individual_publication_outdated = True
     db.commit()
     return get_manager_review(cycle_id=cycle_id, db=db, current_user=current_user)
 
@@ -669,6 +713,10 @@ def publish_cycle(
     cycle.team_published = True
     cycle.individuals_published = True
     cycle.status = "published"
+    cycle.team_public_snapshot = pubdisp.employee_team_summary(db, cycle).model_dump(mode="json")
+    cycle.team_publication_outdated = False
+    cycle.individual_public_snapshot = pubdisp.all_individual_snapshots(db, cycle)
+    cycle.individual_publication_outdated = False
     record_cycle_event(db, cycle_id, "published", actor=current_user)
     db.commit()
     db.refresh(cycle)
@@ -690,8 +738,12 @@ def publish_team(
     cycle.team_published = True
     if cycle.status == "compiled":
         cycle.status = "published"
+    cycle.team_public_snapshot = pubdisp.employee_team_summary(db, cycle).model_dump(mode="json")
+    cycle.team_publication_outdated = False
     if not already:
         record_cycle_event(db, cycle_id, "published_team", actor=current_user)
+    else:
+        record_cycle_event(db, cycle_id, "published_team", actor=current_user, note="Republished team insights")
     db.commit()
     db.refresh(cycle)
     return cycle
@@ -712,8 +764,12 @@ def publish_individuals(
     cycle.individuals_published = True
     if cycle.status == "compiled":
         cycle.status = "published"
+    cycle.individual_public_snapshot = pubdisp.all_individual_snapshots(db, cycle)
+    cycle.individual_publication_outdated = False
     if not already:
         record_cycle_event(db, cycle_id, "published_individuals", actor=current_user)
+    else:
+        record_cycle_event(db, cycle_id, "published_individuals", actor=current_user, note="Republished individual feedback")
     db.commit()
     db.refresh(cycle)
     return cycle
@@ -735,6 +791,13 @@ def get_summary(
     manager_view = _is_cycle_manager(cycle, current_user, db)
     # Employees only see team content after team_published; managers can always preview after compile
     can_see_team = manager_view or cycle.team_published
+    if (
+        not manager_view
+        and cycle.team_published
+        and cycle.team_publication_outdated
+        and cycle.team_public_snapshot
+    ):
+        return CycleSummaryResponse.model_validate(cycle.team_public_snapshot)
     if cycle.status in ("compiled", "published") and can_see_team:
         insights = db.query(CycleInsight).filter(CycleInsight.cycle_id == cycle_id).all()
         threshold = settings.ANONYMITY_THRESHOLD

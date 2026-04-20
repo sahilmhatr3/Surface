@@ -666,10 +666,10 @@ export default function Feedback() {
                   onClick={() => setRantSectionOpen((o) => !o)}
                   className="w-full flex items-center justify-between gap-3 p-6 text-left hover:bg-white/[0.02] transition-colors"
                 >
-                  <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-xl font-semibold text-surface-text-strong">
-                        {t("feedback.anonymousRant")}
+                        {t("feedback.openTeamFeedbackHeading")}
                       </h2>
                       <span
                         className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${
@@ -681,7 +681,12 @@ export default function Feedback() {
                         {rantDone ? t("feedback.rantStatusDone") : t("feedback.rantStatusPending")}
                       </span>
                     </div>
-                    <p className="text-sm text-surface-text-muted mt-0.5">
+                    {!rantDone && (
+                      <p className="text-sm font-medium text-surface-text mt-0.5">
+                        {t("feedback.openTeamFeedbackSubtitle")}
+                      </p>
+                    )}
+                    <p className={`text-sm text-surface-text-muted ${rantDone ? "mt-0.5" : "mt-1"}`}>
                       {rantDone ? t("feedback.rantTeaserDone") : t("feedback.rantTeaser")}
                     </p>
                   </div>
@@ -699,7 +704,9 @@ export default function Feedback() {
                       </div>
                     ) : (
                       <>
-                        <p className="mt-4 text-sm text-surface-text-muted" />
+                        <p className="mt-4 text-sm text-surface-text-muted leading-relaxed">
+                          {t("feedback.rantPrompt")}
+                        </p>
                         <textarea
                           placeholder={t("feedback.rantPlaceholder")}
                           value={rantText}
@@ -936,9 +943,9 @@ export default function Feedback() {
                                         )}
                                       </div>
                                       <div className="p-4 space-y-3">
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                           <div>
-                                            <label className="block text-xs text-surface-text-muted mb-1">
+                                            <label className="block text-xs text-surface-text-muted mb-1 leading-snug">
                                               {t("feedback.supportScore")}
                                             </label>
                                             <select
@@ -961,7 +968,7 @@ export default function Feedback() {
                                             </select>
                                           </div>
                                           <div>
-                                            <label className="block text-xs text-surface-text-muted mb-1">
+                                            <label className="block text-xs text-surface-text-muted mb-1 leading-snug">
                                               {t("feedback.communicationScore")}
                                             </label>
                                             <select
@@ -985,7 +992,7 @@ export default function Feedback() {
                                           </div>
                                         </div>
                                         <div>
-                                          <label className="block text-xs text-surface-text-muted mb-1">
+                                          <label className="block text-xs text-surface-text-muted mb-1 leading-snug">
                                             {t("feedback.whatHelped")}
                                           </label>
                                           <textarea
@@ -1004,7 +1011,7 @@ export default function Feedback() {
                                           />
                                         </div>
                                         <div>
-                                          <label className="block text-xs text-surface-text-muted mb-1">
+                                          <label className="block text-xs text-surface-text-muted mb-1 leading-snug">
                                             {t("feedback.whatImprove")}
                                           </label>
                                           <textarea

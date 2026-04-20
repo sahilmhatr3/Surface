@@ -69,6 +69,8 @@ class CycleResponse(BaseModel):
     status: str
     team_published: bool = False
     individuals_published: bool = False
+    team_publication_outdated: bool = False
+    individual_publication_outdated: bool = False
     participation_rants: int | None = None
     participation_structured: int | None = None
     raw_data_expires_at: datetime | None = None

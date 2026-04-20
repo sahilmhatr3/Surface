@@ -71,6 +71,8 @@ export interface CycleResponse {
   status: string;
   team_published: boolean;
   individuals_published: boolean;
+  team_publication_outdated?: boolean;
+  individual_publication_outdated?: boolean;
   participation_rants: number | null;
   participation_structured: number | null;
   raw_data_expires_at: string | null;
@@ -141,6 +143,8 @@ export interface ManagerReviewResponse {
   status: string;
   team_published: boolean;
   individuals_published: boolean;
+  team_publication_outdated?: boolean;
+  individual_publication_outdated?: boolean;
   participation_rants: number;
   participation_structured: number;
   summary_text: string | null;

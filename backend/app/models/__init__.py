@@ -66,6 +66,10 @@ class FeedbackCycle(Base):
     # Granular publish flags — set independently by the manager
     team_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     individuals_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    team_public_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    team_publication_outdated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    individual_public_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    individual_publication_outdated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     team = relationship("Team", back_populates="feedback_cycles")
