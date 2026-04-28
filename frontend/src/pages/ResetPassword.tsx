@@ -36,6 +36,8 @@ export default function ResetPassword() {
   const [error, setError] = useState<string | null>(null);
   const [wrongAccount, setWrongAccount] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Set true once Supabase confirms this tab is in recovery flow.
+  const [recoveryValidated, setRecoveryValidated] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
@@ -45,6 +47,7 @@ export default function ResetPassword() {
     const markReady = () => {
       if (cancelled || settled) return;
       settled = true;
+      setRecoveryValidated(true);
       setReady(true);
       setError(null);
       setWrongAccount(false);
@@ -107,6 +110,7 @@ export default function ResetPassword() {
     setReady(false);
     setError(null);
     setWrongAccount(false);
+    setRecoveryValidated(false);
     setRetryNonce((n) => n + 1);
   };
 
@@ -114,7 +118,12 @@ export default function ResetPassword() {
     e.preventDefault();
     setError(null);
     const { data: { session: s } } = await supabase.auth.getSession();
-    if (!canSetPasswordHere(s, flowInvite)) {
+    // Some Supabase projects emit PASSWORD_RECOVERY reliably but do not keep
+    // recovery markers in the final session JWT. Accept the validated event too.
+    const allowedForThisSession =
+      canSetPasswordHere(s, flowInvite) ||
+      (!flowInvite && recoveryValidated);
+    if (!allowedForThisSession) {
       setWrongAccount(true);
       setError(t("resetPassword.notRecoverySession"));
       return;
