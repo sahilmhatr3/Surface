@@ -267,6 +267,7 @@
   "admin": {
     "title": "Admin controls",
     "tabs": {
+      "feedbackStatus": "Feedback status",
       "users": "Users",
       "createUsers": "Create users",
       "cycles": "Cycles"

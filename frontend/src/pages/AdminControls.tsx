@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { adminApi, cyclesApi } from "../api/client";
 import type {
+  AdminTeamFeedbackStatusResponse,
   UserResponse,
   TeamResponse,
   CycleResponse,
@@ -26,6 +27,7 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import ErrorMessage from "../components/ErrorMessage";
 
 const MAIN_TAB_ITEMS = [
+  { id: "feedback-status" as const, labelKey: "feedbackStatus" as const },
   { id: "users" as const, labelKey: "users" as const },
   { id: "create-users" as const, labelKey: "createUsers" as const },
   { id: "cycles" as const, labelKey: "cycles" as const },
@@ -61,13 +63,16 @@ export default function AdminControls() {
   const { t, i18n } = useTranslation();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabId>("users");
+  const [activeTab, setActiveTab] = useState<TabId>("feedback-status");
   const [usersSubTab, setUsersSubTab] = useState<UsersSubTabId>("users-list");
 
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [teams, setTeams] = useState<TeamResponse[]>([]);
+  const [feedbackStatus, setFeedbackStatus] = useState<AdminTeamFeedbackStatusResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedFeedbackTeamId, setExpandedFeedbackTeamId] = useState<number | null>(null);
+  const [expandedFeedbackMemberByTeam, setExpandedFeedbackMemberByTeam] = useState<Record<number, number | null>>({});
 
   const [userSearch, setUserSearch] = useState("");
   const [userSortBy, setUserSortBy] = useState<"name" | "team" | "role">("name");
@@ -107,10 +112,11 @@ export default function AdminControls() {
   const load = useCallback(() => {
     setError(null);
     setLoading(true);
-    Promise.all([adminApi.listUsers(), adminApi.listTeams()])
-      .then(([u, teamList]) => {
+    Promise.all([adminApi.listUsers(), adminApi.listTeams(), adminApi.feedbackStatus()])
+      .then(([u, teamList, feedback]) => {
         setUsers(u);
         setTeams(teamList);
+        setFeedbackStatus(feedback);
         if (teamList.length > 0 && !selectedTeamId) setSelectedTeamId(teamList[0].id);
       })
       .catch((e) =>
@@ -118,6 +124,15 @@ export default function AdminControls() {
       )
       .finally(() => setLoading(false));
   }, [selectedTeamId, t]);
+
+  const formatDateTime = (iso: string | null) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString(i18n.language);
+    } catch {
+      return iso;
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -464,6 +479,147 @@ export default function AdminControls() {
             </div>
           ) : (
             <>
+              {activeTab === "feedback-status" && (
+                <section className={cardClass}>
+                  <h2 className="text-lg font-semibold text-surface-text-strong mb-1">
+                    Feedback completion (admin x-ray)
+                  </h2>
+                  <p className="text-surface-text-muted text-sm mb-5">
+                    Team progress for the latest cycle (prefers open), with drill-down to each person and their submitted entries.
+                  </p>
+                  {feedbackStatus.length === 0 ? (
+                    <p className="text-surface-text-muted text-sm">No teams found.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {feedbackStatus.map((team) => {
+                        const expandedTeam = expandedFeedbackTeamId === team.team_id;
+                        const expandedMemberId = expandedFeedbackMemberByTeam[team.team_id] ?? null;
+                        const expectedRants = team.member_count;
+                        return (
+                          <div key={team.team_id} className="rounded-xl border border-surface-pill-border overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedFeedbackTeamId((prev) => (prev === team.team_id ? null : team.team_id))
+                              }
+                              className="w-full px-4 py-3 text-left hover:bg-white/5 transition-colors"
+                            >
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span className="text-surface-text-muted text-sm tabular-nums w-8">
+                                  {expandedTeam ? "▼" : "▶"}
+                                </span>
+                                <span className="font-medium text-surface-text-strong">{team.team_name}</span>
+                                <span className="text-surface-text-muted text-xs">Cycle: {team.cycle_id ?? "none"} · {team.cycle_status ?? "—"}</span>
+                                <span className="ml-auto text-sm text-surface-text-strong">
+                                  {team.completion_percent}% complete
+                                </span>
+                              </div>
+                              <div className="mt-2 h-2 rounded-full bg-white/10 overflow-hidden">
+                                <div
+                                  className="h-full bg-surface-accent-cyan transition-all"
+                                  style={{ width: `${Math.max(0, Math.min(100, team.completion_percent))}%` }}
+                                />
+                              </div>
+                              <p className="mt-2 text-xs text-surface-text-muted">
+                                Rants: {team.rant_submissions}/{expectedRants} · Structured: {team.structured_submissions}/{team.expected_structured_submissions} · Members: {team.member_count}
+                              </p>
+                            </button>
+
+                            {expandedTeam && (
+                              <div className="border-t border-surface-pill-border bg-white/[0.02] p-4 space-y-3">
+                                <p className="text-xs text-surface-text-muted">
+                                  Window: {formatDate(team.cycle_start_date ?? "", i18n.language)} - {formatDate(team.cycle_end_date ?? "", i18n.language)}
+                                </p>
+                                {team.members.length === 0 ? (
+                                  <p className="text-sm text-surface-text-muted">No members in this team.</p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {team.members.map((member) => {
+                                      const expandedMember = expandedMemberId === member.user_id;
+                                      return (
+                                        <div key={member.user_id} className="rounded-lg border border-surface-pill-border/70 overflow-hidden">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setExpandedFeedbackMemberByTeam((prev) => ({
+                                                ...prev,
+                                                [team.team_id]: prev[team.team_id] === member.user_id ? null : member.user_id,
+                                              }))
+                                            }
+                                            className="w-full px-3 py-2.5 text-left hover:bg-white/5 transition-colors"
+                                          >
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <span className="text-surface-text-muted text-xs w-6">{expandedMember ? "▼" : "▶"}</span>
+                                              <span className="text-sm text-surface-text-strong font-medium">{member.name}</span>
+                                              <span className="text-xs text-surface-text-muted">{member.email}</span>
+                                              <span className="text-xs text-surface-text-muted capitalize">{member.role}</span>
+                                              <span className="ml-auto text-xs text-surface-text-strong">
+                                                {member.completion_percent}% ({member.structured_given_count}/{member.structured_expected_count} structured, rant {member.has_rant ? "yes" : "no"})
+                                              </span>
+                                            </div>
+                                          </button>
+                                          {expandedMember && (
+                                            <div className="border-t border-surface-pill-border/70 p-3 space-y-3 bg-black/10">
+                                              <div className="rounded-lg border border-surface-pill-border/70 p-3">
+                                                <h4 className="text-xs uppercase tracking-wide text-surface-text-muted mb-2">Rant entry</h4>
+                                                {member.rant_entry ? (
+                                                  <div className="space-y-2 text-sm">
+                                                    <p className="text-xs text-surface-text-muted">
+                                                      {formatDateTime(member.rant_entry.created_at)} · theme: {member.rant_entry.theme ?? "—"} · sentiment: {member.rant_entry.sentiment ?? "—"}
+                                                    </p>
+                                                    <div>
+                                                      <p className="text-xs text-surface-text-muted mb-1">Raw text</p>
+                                                      <p className="whitespace-pre-wrap text-surface-text">{member.rant_entry.raw_text || "—"}</p>
+                                                    </div>
+                                                    <div>
+                                                      <p className="text-xs text-surface-text-muted mb-1">Anonymized/processed</p>
+                                                      <p className="whitespace-pre-wrap text-surface-text">{member.rant_entry.anonymized_text || "—"}</p>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <p className="text-sm text-surface-text-muted">No rant submitted.</p>
+                                                )}
+                                              </div>
+
+                                              <div className="rounded-lg border border-surface-pill-border/70 p-3">
+                                                <h4 className="text-xs uppercase tracking-wide text-surface-text-muted mb-2">Structured entries</h4>
+                                                {member.structured_entries.length === 0 ? (
+                                                  <p className="text-sm text-surface-text-muted">No structured entries submitted.</p>
+                                                ) : (
+                                                  <div className="space-y-3">
+                                                    {member.structured_entries.map((entry) => (
+                                                      <div key={entry.id} className="rounded-md border border-surface-pill-border/60 p-3 bg-white/[0.02]">
+                                                        <p className="text-xs text-surface-text-muted mb-2">
+                                                          To: {entry.receiver_name} (#{entry.receiver_id}) · {formatDateTime(entry.created_at)}
+                                                        </p>
+                                                        <p className="text-xs text-surface-text-muted mb-1">Scores</p>
+                                                        <pre className="text-xs text-surface-text-muted bg-black/20 rounded p-2 overflow-auto">{JSON.stringify(entry.scores, null, 2)}</pre>
+                                                        <p className="text-xs text-surface-text-muted mt-2 mb-1">What helped</p>
+                                                        <p className="whitespace-pre-wrap text-sm text-surface-text">{entry.comments_helpful || "—"}</p>
+                                                        <p className="text-xs text-surface-text-muted mt-2 mb-1">Could improve</p>
+                                                        <p className="whitespace-pre-wrap text-sm text-surface-text">{entry.comments_improvement || "—"}</p>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+
               {activeTab === "users" && (
                 <section className={cardClass}>
                   <div className="flex flex-wrap gap-2 mb-4 border-b border-surface-pill-border pb-3">

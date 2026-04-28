@@ -154,6 +154,9 @@ export const adminApi = {
     request<void>(`/admin/teams/${teamId}/cycles/${cycleId}/raw-data`, {
       method: "DELETE",
     }),
+
+  feedbackStatus: () =>
+    request<import("./types").AdminTeamFeedbackStatusResponse[]>("/admin/feedback-status"),
 };
 
 // ---- Cycles (auth; role/team govern access) ----

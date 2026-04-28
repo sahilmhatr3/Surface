@@ -95,3 +95,58 @@ class TeamCreate(BaseModel):
     """Request to create a single team."""
 
     name: str = Field(..., min_length=1, max_length=255)
+
+
+class AdminFeedbackEntryResponse(BaseModel):
+    """One structured entry submitted by a giver (admin x-ray view)."""
+
+    id: int
+    receiver_id: int
+    receiver_name: str
+    scores: dict
+    comments_helpful: str | None = None
+    comments_improvement: str | None = None
+    created_at: datetime | None = None
+
+
+class AdminRantEntryResponse(BaseModel):
+    """One rant submitted by a giver (raw + processed forms)."""
+
+    id: int
+    raw_text: str | None = None
+    anonymized_text: str | None = None
+    theme: str | None = None
+    sentiment: str | None = None
+    created_at: datetime | None = None
+
+
+class AdminMemberFeedbackStatusResponse(BaseModel):
+    """Per-user completion and submitted entries for a cycle."""
+
+    user_id: int
+    name: str
+    email: str
+    role: str
+    has_rant: bool
+    structured_given_count: int
+    structured_expected_count: int
+    completion_percent: int
+    rant_entry: AdminRantEntryResponse | None = None
+    structured_entries: list[AdminFeedbackEntryResponse] = Field(default_factory=list)
+
+
+class AdminTeamFeedbackStatusResponse(BaseModel):
+    """Per-team feedback completion summary with optional per-member drill-down."""
+
+    team_id: int
+    team_name: str
+    cycle_id: int | None = None
+    cycle_status: str | None = None
+    cycle_start_date: datetime | None = None
+    cycle_end_date: datetime | None = None
+    member_count: int
+    rant_submissions: int
+    structured_submissions: int
+    expected_structured_submissions: int
+    completion_percent: int
+    members: list[AdminMemberFeedbackStatusResponse] = Field(default_factory=list)

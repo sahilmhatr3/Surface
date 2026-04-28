@@ -244,6 +244,7 @@ def submit_rant(
         Rant.cycle_id == body.cycle_id, Rant.user_id == current_user.id
     ).first()
     if existing:
+        existing.raw_text = raw_text
         existing.anonymized_text = ""
         existing.theme = "processing"
         existing.sentiment = "processing"
@@ -254,7 +255,7 @@ def submit_rant(
         rant = Rant(
             user_id=current_user.id,
             cycle_id=body.cycle_id,
-            raw_text=None,
+            raw_text=raw_text,
             anonymized_text="",
             theme="processing",
             sentiment="processing",

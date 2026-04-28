@@ -97,6 +97,53 @@ export interface CycleUpdate {
   end_date?: string;
 }
 
+export interface AdminRantEntryResponse {
+  id: number;
+  raw_text: string | null;
+  anonymized_text: string | null;
+  theme: string | null;
+  sentiment: string | null;
+  created_at: string | null;
+}
+
+export interface AdminFeedbackEntryResponse {
+  id: number;
+  receiver_id: number;
+  receiver_name: string;
+  scores: Record<string, number>;
+  comments_helpful: string | null;
+  comments_improvement: string | null;
+  created_at: string | null;
+}
+
+export interface AdminMemberFeedbackStatusResponse {
+  user_id: number;
+  name: string;
+  email: string;
+  role: string;
+  has_rant: boolean;
+  structured_given_count: number;
+  structured_expected_count: number;
+  completion_percent: number;
+  rant_entry: AdminRantEntryResponse | null;
+  structured_entries: AdminFeedbackEntryResponse[];
+}
+
+export interface AdminTeamFeedbackStatusResponse {
+  team_id: number;
+  team_name: string;
+  cycle_id: number | null;
+  cycle_status: string | null;
+  cycle_start_date: string | null;
+  cycle_end_date: string | null;
+  member_count: number;
+  rant_submissions: number;
+  structured_submissions: number;
+  expected_structured_submissions: number;
+  completion_percent: number;
+  members: AdminMemberFeedbackStatusResponse[];
+}
+
 // ---- Cycles (cycles.py) ----
 export interface ThemeItem {
   id: number | null;

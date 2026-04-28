@@ -16,6 +16,10 @@ from app.db import get_db
 from app.models import FeedbackCycle, Rant, StructuredFeedback, Team, User
 from app.utils import record_cycle_event
 from app.schemas.admin import (
+    AdminFeedbackEntryResponse,
+    AdminMemberFeedbackStatusResponse,
+    AdminRantEntryResponse,
+    AdminTeamFeedbackStatusResponse,
     CycleCreate,
     CycleResponse,
     CycleUpdate,
@@ -281,6 +285,155 @@ def list_users(db: Session = Depends(get_db)):
     """List all users. Admin only."""
     users = db.query(User).order_by(User.email).all()
     return users
+
+
+@router.get("/feedback-status", response_model=list[AdminTeamFeedbackStatusResponse])
+def feedback_status(db: Session = Depends(get_db)):
+    """
+    Admin-only x-ray view:
+    - Team-level completion for the most relevant cycle (open first, else latest)
+    - Per-member completion
+    - Raw submitted entries (structured + rant)
+    """
+    teams = db.query(Team).order_by(Team.name).all()
+    out: list[AdminTeamFeedbackStatusResponse] = []
+
+    for team in teams:
+        members = (
+            db.query(User)
+            .filter(User.team_id == team.id)
+            .order_by(User.name, User.id)
+            .all()
+        )
+        member_ids = [m.id for m in members]
+        member_name_by_id = {m.id: m.name for m in members}
+
+        cycle = (
+            db.query(FeedbackCycle)
+            .filter(FeedbackCycle.team_id == team.id)
+            .order_by(
+                (FeedbackCycle.status == "open").desc(),
+                FeedbackCycle.start_date.desc(),
+                FeedbackCycle.id.desc(),
+            )
+            .first()
+        )
+
+        if not cycle or not member_ids:
+            out.append(
+                AdminTeamFeedbackStatusResponse(
+                    team_id=team.id,
+                    team_name=team.name,
+                    member_count=len(members),
+                    rant_submissions=0,
+                    structured_submissions=0,
+                    expected_structured_submissions=max(0, len(members) * (len(members) - 1)),
+                    completion_percent=0,
+                    members=[
+                        AdminMemberFeedbackStatusResponse(
+                            user_id=m.id,
+                            name=m.name,
+                            email=m.email,
+                            role=m.role,
+                            has_rant=False,
+                            structured_given_count=0,
+                            structured_expected_count=max(0, len(members) - 1),
+                            completion_percent=0,
+                            rant_entry=None,
+                            structured_entries=[],
+                        )
+                        for m in members
+                    ],
+                )
+            )
+            continue
+
+        rant_rows = (
+            db.query(Rant)
+            .filter(Rant.cycle_id == cycle.id, Rant.user_id.in_(member_ids))
+            .all()
+        )
+        structured_rows = (
+            db.query(StructuredFeedback)
+            .filter(StructuredFeedback.cycle_id == cycle.id, StructuredFeedback.giver_id.in_(member_ids))
+            .all()
+        )
+
+        rant_by_user = {r.user_id: r for r in rant_rows}
+        structured_by_giver: dict[int, list[StructuredFeedback]] = {}
+        for s in structured_rows:
+            structured_by_giver.setdefault(s.giver_id, []).append(s)
+
+        expected_rants = len(members)
+        expected_structured = max(0, len(members) * (len(members) - 1))
+        actual_rants = len(rant_rows)
+        actual_structured = len(structured_rows)
+        denom = expected_rants + expected_structured
+        team_completion = int(round(((actual_rants + actual_structured) / denom) * 100)) if denom > 0 else 0
+
+        member_statuses: list[AdminMemberFeedbackStatusResponse] = []
+        for m in members:
+            member_rant = rant_by_user.get(m.id)
+            given = structured_by_giver.get(m.id, [])
+            expected_for_member = max(0, len(members) - 1)
+            member_denom = 1 + expected_for_member
+            done = (1 if member_rant else 0) + len(given)
+            member_pct = int(round((done / member_denom) * 100)) if member_denom > 0 else 0
+            member_statuses.append(
+                AdminMemberFeedbackStatusResponse(
+                    user_id=m.id,
+                    name=m.name,
+                    email=m.email,
+                    role=m.role,
+                    has_rant=member_rant is not None,
+                    structured_given_count=len(given),
+                    structured_expected_count=expected_for_member,
+                    completion_percent=member_pct,
+                    rant_entry=(
+                        AdminRantEntryResponse(
+                            id=member_rant.id,
+                            raw_text=member_rant.raw_text,
+                            anonymized_text=member_rant.anonymized_text,
+                            theme=member_rant.theme,
+                            sentiment=member_rant.sentiment,
+                            created_at=member_rant.created_at,
+                        )
+                        if member_rant
+                        else None
+                    ),
+                    structured_entries=[
+                        AdminFeedbackEntryResponse(
+                            id=s.id,
+                            receiver_id=s.receiver_id,
+                            receiver_name=member_name_by_id.get(s.receiver_id, f"User #{s.receiver_id}"),
+                            scores=s.scores or {},
+                            comments_helpful=s.comments_helpful,
+                            comments_improvement=s.comments_improvement,
+                            created_at=s.created_at,
+                        )
+                        for s in sorted(given, key=lambda row: (row.created_at is None, row.created_at))
+                    ],
+                )
+            )
+
+        out.append(
+            AdminTeamFeedbackStatusResponse(
+                team_id=team.id,
+                team_name=team.name,
+                cycle_id=cycle.id,
+                cycle_status=cycle.status,
+                cycle_start_date=cycle.start_date,
+                cycle_end_date=cycle.end_date,
+                member_count=len(members),
+                rant_submissions=actual_rants,
+                structured_submissions=actual_structured,
+                expected_structured_submissions=expected_structured,
+                completion_percent=team_completion,
+                members=member_statuses,
+            )
+        )
+
+    return out
 
 
 @router.get("/teams", response_model=list[TeamResponse])

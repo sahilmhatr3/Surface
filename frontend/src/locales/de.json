@@ -267,6 +267,7 @@
   "admin": {
     "title": "Administration",
     "tabs": {
+      "feedbackStatus": "Feedback-Status",
       "users": "Benutzer",
       "createUsers": "Benutzer anlegen",
       "cycles": "Zyklen"
