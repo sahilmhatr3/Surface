@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import Navbar from "./Navbar";
+import AppFeedbackWidget from "./AppFeedbackWidget";
 
 /**
  * Supabase "Site URL" often points at "/". Email links then open "/" with tokens in the hash.
@@ -42,6 +43,7 @@ export default function Layout() {
       <main className="pt-[72px] sm:pt-20">
         <Outlet />
       </main>
+      <AppFeedbackWidget />
     </div>
   );
 }

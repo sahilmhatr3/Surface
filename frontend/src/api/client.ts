@@ -157,6 +157,9 @@ export const adminApi = {
 
   feedbackStatus: () =>
     request<import("./types").AdminTeamFeedbackStatusResponse[]>("/admin/feedback-status"),
+
+  listAppFeedback: () =>
+    request<import("./types").AppFeedbackItemResponse[]>("/admin/app-feedback"),
 };
 
 // ---- Cycles (auth; role/team govern access) ----
@@ -276,5 +279,13 @@ export const feedbackApi = {
       "/feedback/structured/batch",
       { method: "POST", body: JSON.stringify(body) }
     ),
+};
+
+export const appFeedbackApi = {
+  submit: (body: import("./types").AppFeedbackCreate) =>
+    request<import("./types").AppFeedbackSubmitResponse>("/app-feedback", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 

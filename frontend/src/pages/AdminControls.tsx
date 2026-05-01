@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { adminApi, cyclesApi } from "../api/client";
 import type {
+  AppFeedbackItemResponse,
   AdminTeamFeedbackStatusResponse,
   UserResponse,
   TeamResponse,
@@ -28,6 +29,7 @@ import ErrorMessage from "../components/ErrorMessage";
 
 const MAIN_TAB_ITEMS = [
   { id: "feedback-status" as const, labelKey: "feedbackStatus" as const },
+  { id: "app-feedback" as const, labelKey: "appFeedback" as const },
   { id: "users" as const, labelKey: "users" as const },
   { id: "create-users" as const, labelKey: "createUsers" as const },
   { id: "cycles" as const, labelKey: "cycles" as const },
@@ -69,6 +71,7 @@ export default function AdminControls() {
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [feedbackStatus, setFeedbackStatus] = useState<AdminTeamFeedbackStatusResponse[]>([]);
+  const [appFeedbackItems, setAppFeedbackItems] = useState<AppFeedbackItemResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedFeedbackTeamId, setExpandedFeedbackTeamId] = useState<number | null>(null);
@@ -112,11 +115,12 @@ export default function AdminControls() {
   const load = useCallback(() => {
     setError(null);
     setLoading(true);
-    Promise.all([adminApi.listUsers(), adminApi.listTeams(), adminApi.feedbackStatus()])
-      .then(([u, teamList, feedback]) => {
+    Promise.all([adminApi.listUsers(), adminApi.listTeams(), adminApi.feedbackStatus(), adminApi.listAppFeedback()])
+      .then(([u, teamList, feedback, appFeedback]) => {
         setUsers(u);
         setTeams(teamList);
         setFeedbackStatus(feedback);
+        setAppFeedbackItems(appFeedback);
         if (teamList.length > 0 && !selectedTeamId) setSelectedTeamId(teamList[0].id);
       })
       .catch((e) =>
@@ -615,6 +619,64 @@ export default function AdminControls() {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {activeTab === "app-feedback" && (
+                <section className={cardClass}>
+                  <h2 className="text-lg font-semibold text-surface-text-strong mb-1">
+                    App feedback inbox
+                  </h2>
+                  <p className="text-surface-text-muted text-sm mb-5">
+                    All user-submitted app feedback, including optional attachments.
+                  </p>
+                  {appFeedbackItems.length === 0 ? (
+                    <p className="text-sm text-surface-text-muted">No app feedback submitted yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {appFeedbackItems.map((item) => (
+                        <div key={item.id} className="rounded-lg border border-surface-pill-border/70 p-4 bg-white/[0.02]">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-surface-text-muted mb-2">
+                            <span className="text-surface-text-strong font-medium">{item.user_name}</span>
+                            <span>{item.user_email}</span>
+                            {item.category && (
+                              <span className="px-2 py-0.5 rounded-full border border-surface-pill-border/70 text-surface-text">
+                                {item.category}
+                              </span>
+                            )}
+                            <span className="ml-auto">{formatDateTime(item.created_at)}</span>
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm text-surface-text">
+                            {item.text?.trim() || "—"}
+                          </p>
+                          {item.attachments.length > 0 && (
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {item.attachments.map((a, idx) => (
+                                <a
+                                  key={`${item.id}-${idx}-${a.filename}`}
+                                  href={a.data_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="rounded-md border border-surface-pill-border/70 p-2 hover:bg-white/5 transition-colors"
+                                >
+                                  <p className="text-xs text-surface-text-muted truncate">{a.filename}</p>
+                                  {a.mime_type.startsWith("image/") ? (
+                                    <img
+                                      src={a.data_url}
+                                      alt={a.filename}
+                                      className="mt-1 max-h-40 w-full object-cover rounded"
+                                    />
+                                  ) : (
+                                    <p className="text-xs text-surface-text mt-1">Open attachment</p>
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </section>

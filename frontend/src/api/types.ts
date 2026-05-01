@@ -144,6 +144,35 @@ export interface AdminTeamFeedbackStatusResponse {
   members: AdminMemberFeedbackStatusResponse[];
 }
 
+export interface AppFeedbackAttachment {
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  data_url: string;
+}
+
+export interface AppFeedbackCreate {
+  category?: string | null;
+  text?: string | null;
+  attachments?: AppFeedbackAttachment[];
+}
+
+export interface AppFeedbackSubmitResponse {
+  id: number;
+  created_at: string | null;
+}
+
+export interface AppFeedbackItemResponse {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  category: string | null;
+  text: string | null;
+  attachments: AppFeedbackAttachment[];
+  created_at: string | null;
+}
+
 // ---- Cycles (cycles.py) ----
 export interface ThemeItem {
   id: number | null;

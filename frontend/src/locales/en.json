@@ -3,6 +3,32 @@
     "showPassword": "Show password",
     "hidePassword": "Hide password"
   },
+  "appFeedback": {
+    "trigger": "App feedback",
+    "title": "App feedback",
+    "subtitle": "Tell us what is working well and what needs improvement.",
+    "close": "Close",
+    "category": "Category (optional)",
+    "message": "Message (optional)",
+    "placeholder": "Share a bug, idea, workflow pain point, or screenshot context...",
+    "files": "Attachments (optional)",
+    "attach": "Upload files",
+    "removeFile": "Remove",
+    "cancel": "Cancel",
+    "send": "Send feedback",
+    "sending": "Sending…",
+    "success": "Thanks — feedback submitted.",
+    "submitError": "Could not submit feedback.",
+    "fileReadError": "Could not read one of the selected files.",
+    "categories": {
+      "none": "Select category",
+      "bug": "Bug",
+      "ux": "UX",
+      "feature": "Feature request",
+      "performance": "Performance",
+      "other": "Other"
+    }
+  },
   "lang": {
     "switcherAria": "Change language",
     "english": "English",
@@ -268,6 +294,7 @@
     "title": "Admin controls",
     "tabs": {
       "feedbackStatus": "Feedback status",
+      "appFeedback": "App feedback",
       "users": "Users",
       "createUsers": "Create users",
       "cycles": "Cycles"

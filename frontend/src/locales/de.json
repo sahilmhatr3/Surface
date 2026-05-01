@@ -3,6 +3,32 @@
     "showPassword": "Passwort anzeigen",
     "hidePassword": "Passwort verbergen"
   },
+  "appFeedback": {
+    "trigger": "App-Feedback",
+    "title": "App-Feedback",
+    "subtitle": "Teilen Sie uns mit, was gut funktioniert und was verbessert werden sollte.",
+    "close": "Schließen",
+    "category": "Kategorie (optional)",
+    "message": "Nachricht (optional)",
+    "placeholder": "Melden Sie einen Bug, eine Idee, einen Workflow-Schmerzpunkt oder Kontext zu einem Screenshot...",
+    "files": "Anhänge (optional)",
+    "attach": "Dateien hochladen",
+    "removeFile": "Entfernen",
+    "cancel": "Abbrechen",
+    "send": "Feedback senden",
+    "sending": "Senden…",
+    "success": "Danke — Feedback wurde gesendet.",
+    "submitError": "Feedback konnte nicht gesendet werden.",
+    "fileReadError": "Eine der ausgewählten Dateien konnte nicht gelesen werden.",
+    "categories": {
+      "none": "Kategorie wählen",
+      "bug": "Bug",
+      "ux": "UX",
+      "feature": "Feature-Wunsch",
+      "performance": "Performance",
+      "other": "Sonstiges"
+    }
+  },
   "lang": {
     "switcherAria": "Sprache ändern",
     "english": "English",
@@ -268,6 +294,7 @@
     "title": "Administration",
     "tabs": {
       "feedbackStatus": "Feedback-Status",
+      "appFeedback": "App-Feedback",
       "users": "Benutzer",
       "createUsers": "Benutzer anlegen",
       "cycles": "Zyklen"
