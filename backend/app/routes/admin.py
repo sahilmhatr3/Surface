@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.db import get_db
-from app.models import FeedbackCycle, Rant, StructuredFeedback, Team, User
+from app.models import AppFeedback, FeedbackCycle, Rant, StructuredFeedback, Team, User
 from app.utils import record_cycle_event
 from app.schemas.admin import (
     AdminFeedbackEntryResponse,
@@ -30,6 +30,7 @@ from app.schemas.admin import (
     UsersImportResponse,
 )
 from app.schemas.auth import UserResponse
+from app.schemas.app_feedback import AppFeedbackItemResponse
 from app.core.security import get_current_admin_user
 from app.core.config import settings
 
@@ -285,6 +286,28 @@ def list_users(db: Session = Depends(get_db)):
     """List all users. Admin only."""
     users = db.query(User).order_by(User.email).all()
     return users
+
+
+@router.get("/app-feedback", response_model=list[AppFeedbackItemResponse])
+def list_app_feedback(db: Session = Depends(get_db)):
+    """Admin-only list of all app feedback submissions, newest first."""
+    rows = db.query(AppFeedback).order_by(AppFeedback.created_at.desc(), AppFeedback.id.desc()).all()
+    user_ids = {r.user_id for r in rows}
+    users = db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+    user_map = {u.id: u for u in users}
+    return [
+        AppFeedbackItemResponse(
+            id=r.id,
+            user_id=r.user_id,
+            user_name=user_map[r.user_id].name if r.user_id in user_map else f"User #{r.user_id}",
+            user_email=user_map[r.user_id].email if r.user_id in user_map else "unknown",
+            category=r.category,
+            text=r.text,
+            attachments=r.attachments or [],
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
 
 
 @router.get("/feedback-status", response_model=list[AdminTeamFeedbackStatusResponse])
