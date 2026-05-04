@@ -12,6 +12,7 @@ from app.db import get_db
 from app.models import Action, CycleEvent, CycleInsight, CycleReceiverSummary, FeedbackCycle, RantDirectedSegment, User
 from app.services.aggregation import cleanup_expired_raw_data, run_aggregation
 from app.services import published_display as pubdisp
+from app.schemas.feedback import TeammateResponse
 from app.schemas.cycles import (
     ActionCreate,
     ActionResponse,
@@ -89,6 +90,18 @@ def _is_cycle_manager(cycle: FeedbackCycle, user: User, db: Session) -> bool:
         return True
     manager_id = _get_team_manager_id(db, cycle.team_id)
     return manager_id is not None and user.id == manager_id
+
+
+def _require_cycle_manager_write(cycle: FeedbackCycle, user: User, db: Session) -> None:
+    """Raise 403 if user is not the team's manager (admins may read manager review but not mutate)."""
+    if user.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins can view compiled insights in read-only mode; publishing and editing are disabled.",
+        )
+    manager_id = _get_team_manager_id(db, cycle.team_id)
+    if manager_id is None or user.id != manager_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager access required")
 
 
 @router.get("", response_model=list[CycleResponse])
@@ -249,6 +262,24 @@ def get_themes(
         participation_structured=part_struct,
         themes=themes,
     )
+
+
+@router.get("/{cycle_id}/team-roster", response_model=list[TeammateResponse])
+def get_cycle_team_roster(
+    cycle_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Users on the cycle's team (names for manager review). Team manager or admin."""
+    cycle = _get_cycle(db, cycle_id)
+    _require_cycle_manager(cycle, current_user, db)
+    rows = (
+        db.query(User)
+        .filter(User.team_id == cycle.team_id)
+        .order_by(User.name)
+        .all()
+    )
+    return [TeammateResponse(id=u.id, name=u.name) for u in rows if u.name]
 
 
 @router.get("/{cycle_id}/manager-summary", response_model=ManagerSummaryResponse)
@@ -447,7 +478,7 @@ def create_action(
 ):
     """Add a manager action (team-level or individual). Requires manager of the cycle's team."""
     cycle = _get_cycle(db, cycle_id)
-    _require_cycle_manager(cycle, current_user, db)
+    _require_cycle_manager_write(cycle, current_user, db)
     # Validate individual target belongs to the same team
     if body.receiver_id is not None:
         target = db.get(User, body.receiver_id)
@@ -476,12 +507,17 @@ def update_action(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Edit an action. Only the manager who created it (or admin) can update."""
+    """Edit an action. Only the manager who created it can update."""
     cycle = _get_cycle(db, cycle_id)
     action = db.get(Action, action_id)
     if not action or action.cycle_id != cycle_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action not found")
-    if current_user.role != "admin" and action.manager_id != current_user.id:
+    if current_user.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins can view compiled insights in read-only mode; publishing and editing are disabled.",
+        )
+    if action.manager_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your action")
     action.action_text = body.action_text
     db.commit()
@@ -645,7 +681,7 @@ def update_manager_review(
 ):
     """Manager can hide/unhide compiled items before publishing."""
     cycle = _get_cycle(db, cycle_id)
-    _require_cycle_manager(cycle, current_user, db)
+    _require_cycle_manager_write(cycle, current_user, db)
     if cycle.status not in ("compiled", "published"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cycle not yet compiled")
     if cycle.team_published and cycle.team_public_snapshot is None:
@@ -707,7 +743,7 @@ def publish_cycle(
 ):
     """Publish both team and individual sections at once (convenience endpoint)."""
     cycle = _get_cycle(db, cycle_id)
-    _require_cycle_manager(cycle, current_user, db)
+    _require_cycle_manager_write(cycle, current_user, db)
     if cycle.status not in ("compiled", "published"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cycle must be compiled before publishing")
     cycle.team_published = True
@@ -731,7 +767,7 @@ def publish_team(
 ):
     """Publish only the team section (brief, themes, team actions) to employees."""
     cycle = _get_cycle(db, cycle_id)
-    _require_cycle_manager(cycle, current_user, db)
+    _require_cycle_manager_write(cycle, current_user, db)
     if cycle.status not in ("compiled", "published"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cycle must be compiled before publishing")
     already = cycle.team_published
@@ -757,7 +793,7 @@ def publish_individuals(
 ):
     """Publish only the individual section (structured feedback, directed rants, individual actions) to each recipient."""
     cycle = _get_cycle(db, cycle_id)
-    _require_cycle_manager(cycle, current_user, db)
+    _require_cycle_manager_write(cycle, current_user, db)
     if cycle.status not in ("compiled", "published"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cycle must be compiled before publishing")
     already = cycle.individuals_published

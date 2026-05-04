@@ -200,6 +200,10 @@
     "progressStructuredItem": "Structured feedback for teammates",
     "cycleCompleteTitle": "You’re finished for this cycle",
     "cycleCompleteBody": "Your open team feedback (if you chose to send it) and structured feedback for everyone are on file. You can still expand a teammate and update a submission until the cycle closes.",
+    "appFeedbackPromptTitle": "Have a second to share app feedback?",
+    "appFeedbackPromptBody": "We are actively developing Surface and would love to hear what is working well, what is confusing, and what you want improved.",
+    "appFeedbackPromptSkip": "Not now",
+    "appFeedbackPromptCta": "Share app feedback",
     "rantStatusPending": "To do",
     "rantStatusDone": "Submitted",
     "structuredTitle": "Structured feedback",
@@ -306,7 +310,8 @@
     "createUsersHelp": "Supabase emails each new user an invite link to set their password. Match your deployed URL in backend APP_PUBLIC_URL and in Supabase → Authentication → URL configuration (redirects for /auth/callback). For employees, select a manager first — the team will auto-fill from theirs.",
     "createUsersLanguageHint": "Choose their app language for the invite — they can change it later in Settings.",
     "inviteLanguageShort": "Lang",
-    "inviteLanguageHelp": "Language the app uses when they first sign in (default English)."
+    "inviteLanguageHelp": "Language the app uses when they first sign in (default English).",
+    "viewCompiledReview": "Manager review (read-only)"
   },
   "settings": {
     "title": "Settings",
@@ -346,6 +351,8 @@
     "strengthTitle": "Strength: {{score}}/5",
     "teamViewPreview": "Team view preview",
     "managerReview": "Manager review",
+    "adminReadOnlyBanner": "Administrator view: you see the same compiled content as the team manager. Publishing and editing are disabled.",
+    "adminPickCycle": "Admins are not on a team cycle by default. Open Admin → Cycles, pick a team, then use Manager review (read-only) on a compiled or published cycle.",
     "previewSubtitle": "Exactly what your team will see after publish",
     "reviewSubtitle": "Use eye icons to control what the team sees, then publish each section",
     "teamLiveBadge": "Team live",

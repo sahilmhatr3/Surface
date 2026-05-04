@@ -2,7 +2,7 @@
  * Admin Controls: vertical tabs (Users, Create users, Cycles).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { adminApi, cyclesApi } from "../api/client";
@@ -1176,6 +1176,14 @@ export default function AdminControls() {
                                   >
                                     {compileCycleSubmitting === c.id ? "Compiling…" : "Compile"}
                                   </button>
+                                )}
+                                {(c.status === "compiled" || c.status === "published") && (
+                                  <Link
+                                    to={`/insights?cycle=${c.id}&tab=review`}
+                                    className={`${btnClass} no-underline inline-flex items-center`}
+                                  >
+                                    {t("admin.viewCompiledReview")}
+                                  </Link>
                                 )}
 
                                 {/* 3-dot menu */}

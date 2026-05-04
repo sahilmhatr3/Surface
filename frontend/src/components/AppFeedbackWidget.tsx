@@ -78,10 +78,10 @@ export default function AppFeedbackWidget() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-surface-pill-border text-surface-text text-sm focus:outline-none focus:border-surface-accent-cyan/50"
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-surface-pill-border text-surface-text-strong text-sm focus:outline-none focus:border-surface-accent-cyan/50"
                 >
                   {CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>
+                    <option key={c.value} value={c.value} className="bg-white text-slate-900">
                       {t(c.labelKey)}
                     </option>
                   ))}

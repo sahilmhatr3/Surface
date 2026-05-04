@@ -4,7 +4,7 @@
  * Employee: published sanitized team themes + summary + actions.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { cyclesApi, feedbackApi } from "../api/client";
@@ -207,6 +207,7 @@ function ActionRow({
   onEditChange,
   onEditCommit,
   onEditCancel,
+  readOnly = false,
 }: {
   action: ActionResponse;
   nameMap: Record<number, string>;
@@ -219,6 +220,7 @@ function ActionRow({
   onEditChange: (s: string) => void;
   onEditCommit: () => void;
   onEditCancel: () => void;
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const isIndividual = action.receiver_id != null;
@@ -275,7 +277,7 @@ function ActionRow({
             </p>
           )}
         </div>
-        {!isEditing && (
+        {!isEditing && !readOnly && (
           <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
             <button
               type="button"
@@ -367,6 +369,7 @@ export default function Insights() {
   const [addingAction, setAddingAction] = useState(false);
 
   const isManagerView = user?.role === "manager" || user?.role === "admin";
+  const canMutateManagerReview = user?.role === "manager";
 
   // Show manager review panel when explicitly requested via ?tab=review,
   // OR when manager is viewing a compiled-but-unpublished cycle (nothing in team view yet).
@@ -452,9 +455,25 @@ export default function Insights() {
     if (!cycleId || isNaN(cycleId)) { setLoading(false); return; }
     setError(null);
     setLoading(true);
+    const roster =
+      user.role === "admin"
+        ? cyclesApi.getCycleTeamRoster(cycleId)
+        : feedbackApi.getTeammates();
     const reqs = isManagerView
-      ? Promise.all([cyclesApi.getManagerReview(cycleId), cyclesApi.getThemes(cycleId), cyclesApi.getSummary(cycleId), feedbackApi.getTeammates(), cyclesApi.getEvents(cycleId)])
-      : Promise.all([Promise.resolve(null), cyclesApi.getThemes(cycleId), cyclesApi.getSummary(cycleId), feedbackApi.getTeammates(), cyclesApi.getEvents(cycleId)]);
+      ? Promise.all([
+          cyclesApi.getManagerReview(cycleId),
+          cyclesApi.getThemes(cycleId),
+          cyclesApi.getSummary(cycleId),
+          roster,
+          cyclesApi.getEvents(cycleId),
+        ])
+      : Promise.all([
+          Promise.resolve(null),
+          cyclesApi.getThemes(cycleId),
+          cyclesApi.getSummary(cycleId),
+          roster,
+          cyclesApi.getEvents(cycleId),
+        ]);
     reqs
       .then(([r, t, s, tm, ev]) => {
         setReview(r as ManagerReviewResponse | null);
@@ -644,6 +663,7 @@ export default function Insights() {
   // listCycles() returns cycles start_date DESC (most recent first), so iterate directly.
   useEffect(() => {
     if (cycleId || authLoading || !user) return;
+    if (user.role === "admin") return;
     cyclesApi.listCycles().then((list) => {
       const priority = ["published", "compiled", "closed", "open"];
       let best: typeof list[0] | null = null;
@@ -661,6 +681,19 @@ export default function Insights() {
   if (!user) return null;
 
   if (!cycleId || isNaN(cycleId)) {
+    if (user.role === "admin") {
+      return (
+        <section className="min-h-[60vh] flex flex-col items-center justify-center gap-4 px-4 max-w-lg mx-auto text-center">
+          <p className="text-surface-text-muted text-sm">{t("insights.adminPickCycle")}</p>
+          <Link
+            to="/admin-controls"
+            className="text-sm font-medium text-surface-accent-cyan hover:underline"
+          >
+            {t("admin.title")}
+          </Link>
+        </section>
+      );
+    }
     return (
       <section className="min-h-[60vh] flex items-center justify-center">
         <LoadingSpinner />
@@ -691,6 +724,11 @@ export default function Insights() {
           {/* ── MANAGER REVIEW DASHBOARD ── */}
           {showReview && review && (
             <div className="rounded-2xl bg-surface-card border border-surface-pill-border overflow-hidden">
+              {user.role === "admin" && (
+                <div className="px-6 py-3 border-b border-violet-500/20 bg-violet-500/5 text-sm text-surface-text">
+                  {t("insights.adminReadOnlyBanner")}
+                </div>
+              )}
 
               {/* Header bar */}
               <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-surface-pill-border">
@@ -861,7 +899,9 @@ export default function Insights() {
                                       <span className="font-medium text-surface-text-strong flex-1 truncate">{capitalize(th.theme)}</span>
                                       <SentimentBadge sentiment={th.dominant_sentiment} />
                                       <StrengthDots score={th.strength_score} />
-                                      <EyeToggle visible={!hidden} onToggle={() => toggleTheme(th.id)} />
+                                      {canMutateManagerReview && (
+                                        <EyeToggle visible={!hidden} onToggle={() => toggleTheme(th.id)} />
+                                      )}
                                     </div>
                                     {th.example_comments.length > 0 && !hidden && (
                                       <div>
@@ -871,7 +911,9 @@ export default function Insights() {
                                             <div key={ci} className={`flex items-start gap-2 px-4 py-2.5 border-b border-surface-pill-border/20 last:border-0 ${pointHidden ? "opacity-40" : ""}`}>
                                               <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${pointHidden ? "bg-surface-pill-border" : "bg-surface-accent-cyan/60"}`} />
                                               <p className={`text-sm flex-1 ${pointHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>{c}</p>
-                                              <EyeToggle visible={!pointHidden} onToggle={() => toggleExampleIndex(th.id, ci)} />
+                                              {canMutateManagerReview && (
+                                                <EyeToggle visible={!pointHidden} onToggle={() => toggleExampleIndex(th.id, ci)} />
+                                              )}
                                             </div>
                                           );
                                         })}
@@ -892,34 +934,36 @@ export default function Insights() {
                         )}
 
                         {/* Team section action bar */}
-                        <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50 mt-auto">
-                          <div className="flex items-center gap-2">
-                            {isDirty && <span className="text-xs text-amber-400/80">{t("insights.unsavedChanges")}</span>}
-                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">{t("insights.reviewSaved")}</span>}
+                        {canMutateManagerReview && (
+                          <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50 mt-auto">
+                            <div className="flex items-center gap-2">
+                              {isDirty && <span className="text-xs text-amber-400/80">{t("insights.unsavedChanges")}</span>}
+                              {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">{t("insights.reviewSaved")}</span>}
+                            </div>
+                            <div className="flex gap-2">
+                              <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
+                                {savingReview ? t("common.saving") : t("common.save")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={publishTeam}
+                                disabled={
+                                  publishingTeam ||
+                                  (review.team_published === true && review.team_publication_outdated !== true)
+                                }
+                                className="px-5 py-2 rounded-full text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-all"
+                              >
+                                {publishingTeam
+                                  ? t("insights.publishing")
+                                  : review.team_published === true && review.team_publication_outdated !== true
+                                    ? t("insights.teamPublished")
+                                    : review.team_published === true && review.team_publication_outdated === true
+                                      ? t("insights.republishTeamInsights")
+                                      : t("insights.publishTeamInsights")}
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
-                              {savingReview ? t("common.saving") : t("common.save")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={publishTeam}
-                              disabled={
-                                publishingTeam ||
-                                (review.team_published === true && review.team_publication_outdated !== true)
-                              }
-                              className="px-5 py-2 rounded-full text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-all"
-                            >
-                              {publishingTeam
-                                ? t("insights.publishing")
-                                : review.team_published === true && review.team_publication_outdated !== true
-                                  ? t("insights.teamPublished")
-                                  : review.team_published === true && review.team_publication_outdated === true
-                                    ? t("insights.republishTeamInsights")
-                                    : t("insights.publishTeamInsights")}
-                            </button>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
@@ -950,7 +994,9 @@ export default function Insights() {
                                       ))}
                                       <SentimentBadge sentiment={rs.sentiment} />
                                       <StrengthDots score={rs.strength_score} />
-                                      <EyeToggle visible={!hidden} onToggle={() => toggleReceiverSummary(rs.id)} />
+                                      {canMutateManagerReview && (
+                                        <EyeToggle visible={!hidden} onToggle={() => toggleReceiverSummary(rs.id)} />
+                                      )}
                                     </div>
                                     {!hidden && (
                                       <>
@@ -963,7 +1009,9 @@ export default function Insights() {
                                                 <div key={si} className={`flex items-start gap-2 px-4 py-2 border-b border-surface-pill-border/10 last:border-0 ${ptHidden ? "opacity-40" : ""}`}>
                                                   <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${ptHidden ? "bg-surface-pill-border/40" : "bg-surface-text-muted/50"}`} />
                                                   <p className={`text-sm flex-1 ${ptHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>{s}</p>
-                                                  <EyeToggle visible={!ptHidden} onToggle={() => toggleHelpfulIndex(rs.id, si)} />
+                                                  {canMutateManagerReview && (
+                                                    <EyeToggle visible={!ptHidden} onToggle={() => toggleHelpfulIndex(rs.id, si)} />
+                                                  )}
                                                 </div>
                                               );
                                             })}
@@ -978,7 +1026,9 @@ export default function Insights() {
                                                 <div key={si} className={`flex items-start gap-2 px-4 py-2 border-b border-surface-pill-border/10 last:border-0 ${ptHidden ? "opacity-40" : ""}`}>
                                                   <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${ptHidden ? "bg-surface-pill-border" : "bg-amber-400/60"}`} />
                                                   <p className={`text-sm flex-1 ${ptHidden ? "line-through text-surface-text-muted" : "text-surface-text"}`}>{s}</p>
-                                                  <EyeToggle visible={!ptHidden} onToggle={() => toggleImprovementIndex(rs.id, si)} />
+                                                  {canMutateManagerReview && (
+                                                    <EyeToggle visible={!ptHidden} onToggle={() => toggleImprovementIndex(rs.id, si)} />
+                                                  )}
                                                 </div>
                                               );
                                             })}
@@ -1022,7 +1072,9 @@ export default function Insights() {
                                         {recName} · {segTheme} · {segSentiment}
                                       </p>
                                     </div>
-                                    <EyeToggle visible={!isHidden} onToggle={() => toggleDirectedSegment(segId)} />
+                                    {canMutateManagerReview && (
+                                      <EyeToggle visible={!isHidden} onToggle={() => toggleDirectedSegment(segId)} />
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1035,37 +1087,39 @@ export default function Insights() {
                         )}
 
                         {/* Individual section action bar */}
-                        <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
-                          <div className="flex items-center gap-2">
-                            {isDirty && <span className="text-xs text-amber-400/80">{t("insights.unsavedChanges")}</span>}
-                            {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">{t("insights.reviewSaved")}</span>}
-                          </div>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
-                              {savingReview ? t("common.saving") : t("common.save")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={publishIndividuals}
-                              disabled={
-                                publishingIndividuals ||
-                                (review.individuals_published === true &&
-                                  review.individual_publication_outdated !== true)
-                              }
-                              className="px-5 py-2 rounded-full text-sm font-semibold border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 disabled:opacity-40 transition-all"
-                            >
-                              {publishingIndividuals
-                                ? t("insights.publishing")
-                                : review.individuals_published === true &&
-                                    review.individual_publication_outdated !== true
-                                  ? t("insights.individualPublished")
+                        {canMutateManagerReview && (
+                          <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
+                            <div className="flex items-center gap-2">
+                              {isDirty && <span className="text-xs text-amber-400/80">{t("insights.unsavedChanges")}</span>}
+                              {!isDirty && !savingReview && <span className="text-xs text-surface-text-muted">{t("insights.reviewSaved")}</span>}
+                            </div>
+                            <div className="flex gap-2">
+                              <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
+                                {savingReview ? t("common.saving") : t("common.save")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={publishIndividuals}
+                                disabled={
+                                  publishingIndividuals ||
+                                  (review.individuals_published === true &&
+                                    review.individual_publication_outdated !== true)
+                                }
+                                className="px-5 py-2 rounded-full text-sm font-semibold border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 disabled:opacity-40 transition-all"
+                              >
+                                {publishingIndividuals
+                                  ? t("insights.publishing")
                                   : review.individuals_published === true &&
-                                      review.individual_publication_outdated === true
-                                    ? t("insights.republishIndividualFeedback")
-                                    : t("insights.publishIndividualFeedback")}
-                            </button>
+                                      review.individual_publication_outdated !== true
+                                    ? t("insights.individualPublished")
+                                    : review.individuals_published === true &&
+                                        review.individual_publication_outdated === true
+                                      ? t("insights.republishIndividualFeedback")
+                                      : t("insights.publishIndividualFeedback")}
+                              </button>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
@@ -1098,6 +1152,7 @@ export default function Insights() {
                                   onEditChange={setEditingActionText}
                                   onEditCommit={() => commitEditAction(a.id)}
                                   onEditCancel={cancelEditAction}
+                                  readOnly={!canMutateManagerReview}
                                 />
                               ))}
                             </div>
@@ -1123,6 +1178,7 @@ export default function Insights() {
                                   onEditChange={setEditingActionText}
                                   onEditCommit={() => commitEditAction(a.id)}
                                   onEditCancel={cancelEditAction}
+                                  readOnly={!canMutateManagerReview}
                                 />
                               ))}
                             </div>
@@ -1134,7 +1190,7 @@ export default function Insights() {
                         )}
 
                         {/* Add action form */}
-                        {addActionOpen ? (
+                        {canMutateManagerReview && addActionOpen ? (
                           <div className="rounded-xl border border-surface-pill-border overflow-hidden">
                             <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-pill-border/40">
                               <span className="text-sm font-medium text-surface-text-strong flex-1">{t("insights.newAction")}</span>
@@ -1190,7 +1246,7 @@ export default function Insights() {
                               </div>
                             </div>
                           </div>
-                        ) : (
+                        ) : canMutateManagerReview ? (
                           <button
                             type="button"
                             onClick={() => setAddActionOpen(true)}
@@ -1198,15 +1254,17 @@ export default function Insights() {
                           >
                             {t("insights.addActionCta")}
                           </button>
-                        )}
+                        ) : null}
 
                         {/* Actions bar — save only (actions publish with their respective section) */}
-                        <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
-                          <p className="text-xs text-surface-text-muted">{t("insights.actionsPublishHint")}</p>
-                          <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
-                            {savingReview ? t("common.saving") : isDirty ? t("insights.saveChanges") : t("common.saved")}
-                          </button>
-                        </div>
+                        {canMutateManagerReview && (
+                          <div className="flex items-center justify-between gap-3 pt-4 border-t border-surface-pill-border/50">
+                            <p className="text-xs text-surface-text-muted">{t("insights.actionsPublishHint")}</p>
+                            <button type="button" onClick={saveReview} disabled={savingReview || !isDirty} className="px-4 py-2 rounded-full text-sm font-medium border border-surface-pill-border text-surface-text hover:border-white/30 hover:bg-white/5 disabled:opacity-40 transition-all">
+                              {savingReview ? t("common.saving") : isDirty ? t("insights.saveChanges") : t("common.saved")}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 

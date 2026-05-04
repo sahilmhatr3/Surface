@@ -7,8 +7,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
-import { cyclesApi, feedbackApi } from "../api/client";
+import { appFeedbackApi, cyclesApi, feedbackApi } from "../api/client";
 import type {
+  AppFeedbackAttachment,
   CycleResponse,
   TeammateResponse,
   StructuredFeedbackScores,
@@ -33,6 +34,24 @@ const RANT_TAGS = [
   "culture",
   "onboarding",
 ];
+
+const APP_FEEDBACK_CATEGORIES = [
+  { value: "", labelKey: "appFeedback.categories.none" as const },
+  { value: "bug", labelKey: "appFeedback.categories.bug" as const },
+  { value: "ux", labelKey: "appFeedback.categories.ux" as const },
+  { value: "feature", labelKey: "appFeedback.categories.feature" as const },
+  { value: "performance", labelKey: "appFeedback.categories.performance" as const },
+  { value: "other", labelKey: "appFeedback.categories.other" as const },
+];
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
 
 // ─── small icons ──────────────────────────────────────────────────────────────
 
@@ -185,6 +204,16 @@ export default function Feedback() {
   // section open/close
   const [rantSectionOpen, setRantSectionOpen] = useState(false);
   const [structuredSectionOpen, setStructuredSectionOpen] = useState(false);
+
+  // post-completion app-feedback prompt
+  const [showAppFeedbackPrompt, setShowAppFeedbackPrompt] = useState(false);
+  const [appFeedbackStep, setAppFeedbackStep] = useState<1 | 2>(1);
+  const [appFbCategory, setAppFbCategory] = useState("");
+  const [appFbText, setAppFbText] = useState("");
+  const [appFbAttachments, setAppFbAttachments] = useState<AppFeedbackAttachment[]>([]);
+  const [appFbSubmitting, setAppFbSubmitting] = useState(false);
+  const [appFbError, setAppFbError] = useState<string | null>(null);
+  const [appFbSuccess, setAppFbSuccess] = useState<string | null>(null);
 
   const isManagerOrAdmin = user?.role === "manager" || user?.role === "admin";
 
@@ -406,6 +435,15 @@ export default function Feedback() {
       : 0;
   const cycleFeedbackFullyComplete =
     rantDone && (structuredTotalCount === 0 || structuredAllDone);
+
+  useEffect(() => {
+    if (!user || !selectedCycle || !cycleFeedbackFullyComplete) return;
+    const key = `surface_app_feedback_prompted_${user.id}_${selectedCycle.id}`;
+    if (window.localStorage.getItem(key) === "1") return;
+    setShowAppFeedbackPrompt(true);
+    setAppFeedbackStep(1);
+    window.localStorage.setItem(key, "1");
+  }, [cycleFeedbackFullyComplete, selectedCycle, user]);
 
   // ─── render guards ───────────────────────────────────────────────────────────
 
@@ -1182,6 +1220,161 @@ export default function Feedback() {
           >
             {t("feedback.viewInsights")}
           </Link>
+        </div>
+      )}
+
+      {showAppFeedbackPrompt && (
+        <div className="fixed inset-0 z-[90] bg-black/70 flex items-end sm:items-center justify-center p-2 sm:p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-white/[0.1] bg-[var(--color-surface-bg,#0a0a0f)] p-4 sm:p-5 shadow-2xl">
+            {appFeedbackStep === 1 ? (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-surface-text-strong">
+                  {t("feedback.appFeedbackPromptTitle")}
+                </h3>
+                <p className="text-sm text-surface-text-muted leading-relaxed">
+                  {t("feedback.appFeedbackPromptBody")}
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className={btnClass}
+                    onClick={() => setShowAppFeedbackPrompt(false)}
+                  >
+                    {t("feedback.appFeedbackPromptSkip")}
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-full text-sm font-medium bg-surface-text-strong text-surface-bg"
+                    onClick={() => setAppFeedbackStep(2)}
+                  >
+                    {t("feedback.appFeedbackPromptCta")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-surface-text-strong">
+                    {t("appFeedback.title")}
+                  </h3>
+                  <p className="text-xs text-surface-text-muted mt-0.5">{t("appFeedback.subtitle")}</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-text-muted mb-1">{t("appFeedback.category")}</label>
+                  <select
+                    value={appFbCategory}
+                    onChange={(e) => setAppFbCategory(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-surface-pill-border text-surface-text-strong text-sm focus:outline-none focus:border-surface-accent-cyan/50"
+                  >
+                    {APP_FEEDBACK_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value} className="bg-white text-slate-900">
+                        {t(c.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-text-muted mb-1">{t("appFeedback.message")}</label>
+                  <textarea
+                    value={appFbText}
+                    onChange={(e) => setAppFbText(e.target.value)}
+                    rows={4}
+                    maxLength={5000}
+                    placeholder={t("appFeedback.placeholder")}
+                    className="w-full px-3 py-2 rounded-lg bg-white/5 border border-surface-pill-border text-surface-text text-sm focus:outline-none focus:border-surface-accent-cyan/50 resize-y"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-text-muted mb-1">{t("appFeedback.files")}</label>
+                  <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-pill-border text-surface-text-muted hover:text-surface-text hover:bg-white/5 cursor-pointer text-sm">
+                    {t("appFeedback.attach")}
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,.txt"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        e.currentTarget.value = "";
+                        if (files.length === 0) return;
+                        try {
+                          const next: AppFeedbackAttachment[] = [];
+                          for (const f of files.slice(0, 5)) {
+                            if (f.size > 5_000_000) continue;
+                            next.push({
+                              filename: f.name,
+                              mime_type: f.type || "application/octet-stream",
+                              size_bytes: f.size,
+                              data_url: await readFileAsDataUrl(f),
+                            });
+                          }
+                          setAppFbAttachments((prev) => [...prev, ...next].slice(0, 5));
+                        } catch {
+                          setAppFbError(t("appFeedback.fileReadError"));
+                        }
+                      }}
+                    />
+                  </label>
+                  {appFbAttachments.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {appFbAttachments.map((a, i) => (
+                        <li key={`${a.filename}-${i}`} className="flex items-center gap-2 text-xs text-surface-text-muted">
+                          <span className="truncate">{a.filename}</span>
+                          <button
+                            type="button"
+                            className="ml-auto text-red-300 hover:text-red-200"
+                            onClick={() => setAppFbAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                          >
+                            {t("appFeedback.removeFile")}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {appFbError && <p className="text-sm text-red-400">{appFbError}</p>}
+                {appFbSuccess && <p className="text-sm text-emerald-300">{appFbSuccess}</p>}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className={btnClass}
+                    onClick={() => setShowAppFeedbackPrompt(false)}
+                  >
+                    {t("appFeedback.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      appFbSubmitting ||
+                      (appFbCategory.trim().length === 0 &&
+                        appFbText.trim().length === 0 &&
+                        appFbAttachments.length === 0)
+                    }
+                    className="px-4 py-2 rounded-full text-sm font-medium bg-surface-text-strong text-surface-bg disabled:opacity-50"
+                    onClick={async () => {
+                      setAppFbSubmitting(true);
+                      setAppFbError(null);
+                      try {
+                        await appFeedbackApi.submit({
+                          category: appFbCategory || null,
+                          text: appFbText || null,
+                          attachments: appFbAttachments,
+                        });
+                        setAppFbSuccess(t("appFeedback.success"));
+                        setTimeout(() => setShowAppFeedbackPrompt(false), 700);
+                      } catch (e) {
+                        setAppFbError(e instanceof Error ? e.message : t("appFeedback.submitError"));
+                      } finally {
+                        setAppFbSubmitting(false);
+                      }
+                    }}
+                  >
+                    {appFbSubmitting ? t("appFeedback.sending") : t("appFeedback.send")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

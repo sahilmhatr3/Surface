@@ -220,6 +220,10 @@ export const cyclesApi = {
   getManagerReview: (cycleId: number) =>
     request<import("./types").ManagerReviewResponse>(`/cycles/${cycleId}/manager-review`),
 
+  /** Team members for name labels in manager review (admin has no team; managers may use /feedback/teammates instead). */
+  getCycleTeamRoster: (cycleId: number) =>
+    request<import("./types").TeammateResponse[]>(`/cycles/${cycleId}/team-roster`),
+
   updateManagerReview: (
     cycleId: number,
     body: import("./types").ManagerReviewUpdateRequest

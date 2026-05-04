@@ -200,6 +200,10 @@
     "progressStructuredItem": "Strukturiertes Feedback für Teamkolleg:innen",
     "cycleCompleteTitle": "Für diesen Zyklus sind Sie fertig",
     "cycleCompleteBody": "Ihr offenes Team-Feedback (falls gesendet) und das strukturierte Feedback für alle sind erfasst. Bis zum Zyklusende können Sie Karten öffnen und Einreichungen anpassen.",
+    "appFeedbackPromptTitle": "Haben Sie kurz Zeit für App-Feedback?",
+    "appFeedbackPromptBody": "Wir entwickeln Surface aktiv weiter und freuen uns über Hinweise, was gut funktioniert, was unklar ist und was wir verbessern sollten.",
+    "appFeedbackPromptSkip": "Vielleicht später",
+    "appFeedbackPromptCta": "App-Feedback geben",
     "rantStatusPending": "Offen",
     "rantStatusDone": "Abgesendet",
     "structuredTitle": "Strukturiertes Feedback",
@@ -306,7 +310,8 @@
     "createUsersHelp": "Supabase sendet jeder neuen Person eine Einladungs-E-Mail zum Passwort-Setzen. Tragen Sie die öffentliche App-URL in APP_PUBLIC_URL (Backend) und unter Authentifizierung → URL-Konfiguration in Supabase ein (Weiterleitungen für /auth/callback). Bei Mitarbeitenden wählen Sie zuerst eine Führungskraft — das Team wird automatisch von deren Team übernommen.",
     "createUsersLanguageHint": "Wählen Sie die App-Sprache für die Einladung — später änderbar unter Einstellungen.",
     "inviteLanguageShort": "Spr.",
-    "inviteLanguageHelp": "Sprache der App beim ersten Anmelden (Standard: Englisch)."
+    "inviteLanguageHelp": "Sprache der App beim ersten Anmelden (Standard: Englisch).",
+    "viewCompiledReview": "Führungskräfte-Prüfung (nur lesen)"
   },
   "settings": {
     "title": "Einstellungen",
@@ -346,6 +351,8 @@
     "strengthTitle": "Stärke: {{score}}/5",
     "teamViewPreview": "Team-Ansicht (Vorschau)",
     "managerReview": "Führungskräfte-Prüfung",
+    "adminReadOnlyBanner": "Administrator-Ansicht: Sie sehen dieselben zusammengestellten Inhalte wie die Team-Führungskraft. Veröffentlichen und Bearbeiten sind deaktiviert.",
+    "adminPickCycle": "Administratoren sind standardmäßig keinem Team-Zyklus zugeordnet. Öffnen Sie Administration → Zyklen, wählen Sie ein Team, und nutzen Sie dort „Führungskräfte-Prüfung (nur lesen)“ bei einem zusammengestellten oder veröffentlichten Zyklus.",
     "previewSubtitle": "Genau das, was Ihr Team nach Veröffentlichung sieht",
     "reviewSubtitle": "Mit den Augen-Symbolen steuern, was das Team sieht, dann jeden Bereich veröffentlichen",
     "teamLiveBadge": "Team live",
